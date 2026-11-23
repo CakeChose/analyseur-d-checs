@@ -11,6 +11,7 @@ import {
   analyseGame,
   evaluatePosition,
   LABELS,
+  THRESHOLDS,
   reviewGame,
   reviewMove,
   type Classification,
@@ -801,8 +802,16 @@ async function refreshProfile() {
   // Une synthèse par cadence : on ne mélange pas bullet et rapide.
   const counts = SPEED_ORDER.map((sp) => [sp, games.filter((g) => g.speed === sp).length] as const).filter(([, n]) => n);
   if (!counts.some(([sp]) => sp === profileSpeed)) profileSpeed = [...counts].sort((a, b) => b[1] - a[1])[0][0];
-  renderProfile(profileStats(games.filter((g) => g.speed === profileSpeed)), counts);
+  renderProfile(profileStats(games.filter((g) => g.speed === profileSpeed), profileMinLoss), counts);
 }
+
+/** Seuil de la synthèse : perte minimale (points de chances de gain) pour qu'une erreur compte. */
+let profileMinLoss = 0;
+const LOSS_FILTERS: [number, string][] = [
+  [0, 'Toutes (imprécisions comprises)'],
+  [THRESHOLDS.inaccuracy, `Erreurs et gaffes (≥ ${THRESHOLDS.inaccuracy} pts)`],
+  [THRESHOLDS.mistake, `Gaffes seulement (≥ ${THRESHOLDS.mistake} pts)`],
+];
 
 const pct = (x: number) => `${Math.round(x)} %`;
 const SPEED_ORDER = ['rapid', 'blitz', 'bullet', 'daily'];
@@ -811,12 +820,17 @@ const SPEEDS: Record<string, string> = { bullet: 'Bullet', blitz: 'Blitz', rapid
 let profileSpeed = '';
 
 function renderProfile(s: ProfileStats, counts: (readonly [string, number])[]) {
-  const speedBar =
+  const speedButtons =
     counts.length > 1
-      ? `<div class="speed-bar">${counts
+      ? counts
           .map(([sp, n]) => `<button data-speed="${sp}" class="${sp === profileSpeed ? 'active' : ''}">${SPEEDS[sp]} (${n})</button>`)
-          .join('')}</div>`
+          .join('')
       : '';
+  const lossSelect = `<label class="muted" title="Variation minimale de la barre d'évaluation pour qu'une erreur soit retenue">Erreurs retenues
+      <select id="profile-minloss">${LOSS_FILTERS.map(
+        ([v, l]) => `<option value="${v}" ${v === profileMinLoss ? 'selected' : ''}>${l}</option>`,
+      ).join('')}</select></label>`;
+  const speedBar = `<div class="speed-bar">${speedButtons}<span class="spacer"></span>${lossSelect}</div>`;
   profileExamples = [];
   profileCauses = s.causes;
   const example = (m: MistakeRecord) => {
@@ -850,7 +864,7 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[]) {
     </section>
     <section class="card wide">
       <h2>Erreurs les plus fréquentes</h2>
-      <p class="muted">${s.totalMistakes} erreurs (imprécisions, erreurs, gaffes, ratés). Une erreur peut avoir plusieurs causes.</p>
+      <p class="muted">${s.totalMistakes} erreurs retenues · ${LOSS_FILTERS.find(([v]) => v === profileMinLoss)![1]}. Une erreur peut avoir plusieurs causes.</p>
       ${causes}
     </section>
     <section class="card">
@@ -876,6 +890,12 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[]) {
     </section>`;
 }
 
+$('profile-summary').addEventListener('change', (e) => {
+  const t = e.target as HTMLSelectElement;
+  if (t.id !== 'profile-minloss') return;
+  profileMinLoss = Number(t.value);
+  refreshProfile();
+});
 $('profile-summary').addEventListener('click', async (e) => {
   const t = e.target as HTMLElement;
   const sp = t.closest<HTMLElement>('[data-speed]');

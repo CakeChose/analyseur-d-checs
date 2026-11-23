@@ -199,6 +199,9 @@ et en tirer une synthèse de ses erreurs les plus fréquentes, puis des exercice
   Boutons pour passer de l'une à l'autre quand plusieurs sont analysées ; la plus jouée est
   affichée d'abord. Cadence déduite du champ TimeControl avec les seuils de chess.com
   (base + 40 × incrément : bullet < 3 min, blitz < 10 min, sinon rapide).
+- Réglage « Erreurs retenues » : toutes, erreurs et gaffes (perte ≥ 10 pts de chances de gain),
+  ou gaffes seulement (≥ 20 pts). Les imprécisions apprennent moins : on peut les écarter.
+  Le réglage filtre les causes, les erreurs par phase, les exemples et les exercices.
 - Précision moyenne, par couleur, et son évolution dans le temps.
 - Erreurs par phase (pour 100 coups joués dans chaque phase, pour comparer à poids égal).
 - Classement des causes les plus fréquentes, avec pour chacune des exemples cliquables

@@ -154,6 +154,8 @@ export interface MistakeRecord {
   san: string;
   opponent: string;
   classification: Classification;
+  /** Chances de gain perdues (points de la barre d'évaluation). */
+  loss: number;
   phase: Phase;
   tags: Tag[];
 }
@@ -170,9 +172,8 @@ export interface GameSummary {
   accuracy: number;
   mistakes: MistakeRecord[];
   movesByPhase: Record<Phase, number>;
-  /** Positions où une tactique gagnante existait : trouvée ou non. */
+  /** Positions où une tactique gagnante existait et a été trouvée (les manquées sont dans `mistakes`). */
   tacticsFound: number;
-  tacticsMissed: number;
   /** A eu une position gagnante (≥ 80 %), et l'a convertie ou non. */
   wasWinning: boolean;
   /** Demi-coup où la position gagnante a été atteinte (pour l'exemple « avantage gâché »). */
@@ -218,7 +219,6 @@ export function summarize(fiche: Fiche, username: string): GameSummary | null {
     mistakes: [],
     movesByPhase: { ouverture: 0, milieu: 0, finale: 0 },
     tacticsFound: 0,
-    tacticsMissed: 0,
     wasWinning: false,
     winningPly: 0,
   };
@@ -246,10 +246,10 @@ export function summarize(fiche: Fiche, username: string): GameSummary | null {
         san: move.san,
         opponent: summary.opponent,
         classification: review.classification,
+        loss: review.loss,
         phase,
         tags,
       });
-      if (tags.some((t) => t.startsWith('manquee-'))) summary.tacticsMissed++;
     } else if (tacticAvailable && GOOD.includes(review.classification)) {
       summary.tacticsFound++;
     }
@@ -282,8 +282,9 @@ function groupBy<T>(xs: T[], key: (x: T) => string): Map<string, T[]> {
   return m;
 }
 
-export function profileStats(games: GameSummary[]): ProfileStats {
-  const mistakes = games.flatMap((g) => g.mistakes);
+/** `minLoss` : ne garder que les erreurs qui font perdre au moins autant de points de chances de gain. */
+export function profileStats(games: GameSummary[], minLoss = 0): ProfileStats {
+  const mistakes = games.flatMap((g) => g.mistakes).filter((m) => m.loss >= minLoss);
   const record = { win: 0, draw: 0, loss: 0 };
   for (const g of games) record[g.result]++;
 
@@ -311,6 +312,7 @@ export function profileStats(games: GameSummary[]): ProfileStats {
         san: '',
         opponent: g.opponent,
         classification: 'mistake' as Classification,
+        loss: 0,
         phase: 'milieu' as Phase,
         tags: [],
       })),
@@ -336,7 +338,7 @@ export function profileStats(games: GameSummary[]): ProfileStats {
   // Forces : ce qui va mieux que le reste.
   const strengths: string[] = [];
   const found = games.reduce((a, g) => a + g.tacticsFound, 0);
-  const missed = games.reduce((a, g) => a + g.tacticsMissed, 0);
+  const missed = mistakes.filter((m) => m.tags.some((t) => t.startsWith('manquee-'))).length;
   if (found + missed >= 5) {
     strengths.push(`Tactiques trouvées : ${found} sur ${found + missed} (${Math.round((100 * found) / (found + missed))} %).`);
   }
