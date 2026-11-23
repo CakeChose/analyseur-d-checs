@@ -218,8 +218,9 @@ export function reviewMove(
     }
   }
 
-  // L'adversaire vient de se tromper et on ne profite pas de l'occasion.
-  if (previous && previous.loss >= T.missOpportunity && loss >= T.inaccuracy) {
+  // L'adversaire vient de se tromper et on ne profite pas de l'occasion
+  // (une vraie gaffe reste une gaffe).
+  if (previous && previous.loss >= T.missOpportunity && loss >= T.inaccuracy && loss < T.mistake) {
     classification = 'miss';
   }
 

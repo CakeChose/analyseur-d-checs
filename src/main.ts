@@ -12,19 +12,25 @@ import {
   evaluatePosition,
   LABELS,
   reviewGame,
+  reviewMove,
   type Classification,
   type GameAnalysis,
   type MoveReview,
   type PositionEval,
 } from './analysis';
-import { buildTree, mainline, type TreeNode } from './tree';
+import { Chess, type Square } from 'chess.js';
+import { buildTree, deleteNode, mainline, playMove, type TreeNode } from './tree';
 import { drawGraph } from './graph';
 import { cacheGet, cachePut } from './cache';
 import { winPercent } from './winprob';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
-const board = Chessground($('board'), { viewOnly: true, coordinates: true });
+const board = Chessground($('board'), {
+  coordinates: true,
+  movable: { free: false, showDests: true, events: { after: onUserMove } },
+  premovable: { enabled: false },
+});
 const engine = new Engine();
 const LIVE_DEPTH = 18;
 
@@ -41,14 +47,38 @@ let analysisToken = 0;
 // Affichage d'une position
 // ---------------------------------------------------------------------------
 
+/** Coups légaux de la position, au format attendu par chessground. */
+function legalDests(fen: string): Map<Key, Key[]> {
+  const dests = new Map<Key, Key[]>();
+  for (const m of new Chess(fen).moves({ verbose: true })) {
+    const list = dests.get(m.from as Key) ?? [];
+    list.push(m.to as Key);
+    dests.set(m.from as Key, list);
+  }
+  return dests;
+}
+
+/** L'utilisateur joue un coup sur l'échiquier : on l'ajoute à l'arbre (variante). */
+function onUserMove(orig: Key, dest: Key) {
+  if (!current) return;
+  const piece = new Chess(current.fen).get(orig as Square);
+  const promoting = piece?.type === 'p' && (dest[1] === '8' || dest[1] === '1');
+  const node = playMove(current, orig, dest, promoting ? 'q' : undefined);
+  if (!node) return show(current);
+  renderMoves();
+  show(node);
+}
+
 function show(node: TreeNode) {
   current = node;
   const m = node.move;
+  const turn = node.ply % 2 === 0 ? 'white' : 'black';
   board.set({
     fen: node.fen,
     lastMove: m ? [m.from as Key, m.to as Key] : undefined,
     check: m ? /[+#]$/.test(m.san) : false,
-    turnColor: node.ply % 2 === 0 ? 'white' : 'black',
+    turnColor: turn,
+    movable: { color: turn, dests: legalDests(node.fen) },
   });
   document.querySelectorAll('.moves .move').forEach((el) => {
     el.classList.toggle('current', Number((el as HTMLElement).dataset.id) === node.id);
@@ -116,17 +146,42 @@ function updateEngine(node: TreeNode) {
     $('engine-status').textContent = 'analyse de la partie en cours…';
     return;
   }
-  $('engine-status').textContent = 'calcul…';
-  evaluatePosition(engine, node.fen, LIVE_DEPTH, (lines) => {
-    if (current !== node || !lines[0]) return;
+  analyseLive(node);
+}
+
+/** Évalue `node` (à fond) et garde le résultat dans l'arbre ; null si interrompu. */
+async function evaluateNode(node: TreeNode, live: boolean): Promise<PositionEval | null> {
+  const ev = await evaluatePosition(engine, node.fen, LIVE_DEPTH, (lines) => {
+    if (!live || current !== node || !lines[0]) return;
     renderEval(node, { lines, win: winPercent(lines[0]) }, `profondeur ${lines[0].depth}`);
-  }).then((ev) => {
-    // Ne garder que les recherches allées jusqu'au bout.
-    if (!ev.result && (ev.lines[0]?.depth ?? 0) < LIVE_DEPTH) return;
-    node.eval = ev;
-    node.evalDepth = LIVE_DEPTH;
-    if (current === node) renderEval(node, ev, `profondeur ${LIVE_DEPTH}`);
   });
+  // Ne garder que les recherches allées jusqu'au bout.
+  if (!ev.result && (ev.lines[0]?.depth ?? 0) < LIVE_DEPTH) return null;
+  node.eval = ev;
+  node.evalDepth = LIVE_DEPTH;
+  return ev;
+}
+
+/**
+ * Analyse en direct. Pour un coup essayé (variante), évalue d'abord la position
+ * d'avant si besoin, puis note le coup comme dans l'analyse complète.
+ */
+async function analyseLive(node: TreeNode) {
+  const parent = node.parent;
+  const needsReview = !node.mainline && parent && node.move && !node.review;
+  if (needsReview && !parent.eval) {
+    $('engine-status').textContent = 'évaluation du coup…';
+    if (!(await evaluateNode(parent, false)) || current !== node) return;
+  }
+  $('engine-status').textContent = 'calcul…';
+  const ev = await evaluateNode(node, true);
+  if (!ev || current !== node) return;
+  if (needsReview && parent.eval) {
+    node.review = reviewMove(node.move!, parent.eval, ev, parent.review);
+    renderMoves();
+    renderReview(node);
+  }
+  renderEval(node, ev, `profondeur ${LIVE_DEPTH}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -151,11 +206,72 @@ function moveSpan(node: TreeNode): HTMLElement {
   return span;
 }
 
+/** Numéro à afficher devant un coup : "12." pour les Blancs, "12..." pour les Noirs en début de ligne. */
+function moveNumber(node: TreeNode, startOfLine: boolean): string {
+  const n = Math.ceil(node.ply / 2);
+  if (node.ply % 2 === 1) return `${n}.`;
+  return startOfLine ? `${n}...` : '';
+}
+
+/**
+ * Écrit une variante en ligne à partir de `node` : les coups suivants,
+ * et les sous-variantes entre parenthèses.
+ */
+function renderLine(node: TreeNode, into: HTMLElement) {
+  let n: TreeNode | undefined = node;
+  let start = true;
+  while (n) {
+    const num = moveNumber(n, start);
+    if (num) into.append(Object.assign(document.createElement('span'), { className: 'var-num', textContent: num }));
+    into.append(moveSpan(n));
+    start = false;
+    const [next, ...alts]: TreeNode[] = n.children;
+    for (const alt of alts) {
+      const sub = document.createElement('span');
+      sub.className = 'subvar';
+      renderLine(alt, sub);
+      into.append(sub);
+      start = true;
+    }
+    n = next;
+  }
+}
+
+/** Bloc d'une variante qui part de la partie principale, avec un bouton pour la supprimer. */
+function variationBlock(node: TreeNode): HTMLElement {
+  const block = document.createElement('div');
+  block.className = 'variation';
+  renderLine(node, block);
+  const del = document.createElement('button');
+  del.className = 'var-del';
+  del.textContent = '✕';
+  del.title = 'Supprimer cette variante';
+  del.onclick = (e) => {
+    e.stopPropagation();
+    const parent = node.parent!;
+    deleteNode(node);
+    renderMoves();
+    if (current && isInside(current, node)) show(parent);
+  };
+  block.append(del);
+  return block;
+}
+
+/** `node` est-il `ancestor` ou l'un de ses descendants ? */
+function isInside(node: TreeNode, ancestor: TreeNode): boolean {
+  for (let n: TreeNode | undefined = node; n; n = n.parent) if (n === ancestor) return true;
+  return false;
+}
+
 function renderMoves() {
   const list = $('moves');
   list.innerHTML = '';
   if (!root) return;
-  const nodes = mainline(root).slice(1);
+  const line = mainline(root);
+  const nodes = line.slice(1);
+  /** Variantes qui partent de la position `p` de la partie principale. */
+  const variationsFrom = (p: TreeNode) => p.children.filter((c) => !c.mainline);
+  for (const v of variationsFrom(root)) list.append(variationBlock(v));
   for (let i = 0; i < nodes.length; i += 2) {
     const row = document.createElement('div');
     row.className = 'move-row';
@@ -165,6 +281,9 @@ function renderMoves() {
     row.append(num, moveSpan(nodes[i]));
     if (nodes[i + 1]) row.append(moveSpan(nodes[i + 1]));
     list.append(row);
+    for (const p of [nodes[i], nodes[i + 1]]) {
+      if (p) for (const v of variationsFrom(p)) list.append(variationBlock(v));
+    }
   }
   if (current) {
     list.querySelector(`[data-id="${current.id}"]`)?.classList.add('current');
@@ -371,6 +490,12 @@ const go = {
     while (n?.children[0]) n = n.children[0];
     if (n) show(n);
   },
+  /** Quitte la variante : revient à la position de la partie d'où elle part. */
+  backToGame: () => {
+    let n: TreeNode | undefined = current ?? undefined;
+    while (n && !n.mainline) n = n.parent;
+    if (n) show(n);
+  },
 };
 
 $('load').onclick = () => load($<HTMLTextAreaElement>('pgn').value);
@@ -390,6 +515,7 @@ document.addEventListener('keydown', (e) => {
   const actions: Record<string, () => void> = {
     ArrowLeft: go.prev,
     ArrowRight: go.next,
+    ArrowUp: go.backToGame,
     Home: go.first,
     End: go.last,
   };
