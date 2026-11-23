@@ -152,6 +152,16 @@ label.button {
   gap: 16px;
   align-items: start;
 }
+.speed-bar {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+}
+.speed-bar button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
 .card {
   background: var(--panel);
   border: 1px solid var(--border);

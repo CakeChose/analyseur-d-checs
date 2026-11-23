@@ -195,7 +195,11 @@ et en tirer une synthèse de ses erreurs les plus fréquentes, puis des exercice
   découverte : plus tard.
 
 ### 8.3 Synthèse du profil
-- Précision moyenne, par couleur, par cadence, et son évolution dans le temps.
+- Une synthèse par cadence (rapide, blitz, bullet, par jour) : on ne mélange pas les cadences.
+  Boutons pour passer de l'une à l'autre quand plusieurs sont analysées ; la plus jouée est
+  affichée d'abord. Cadence déduite du champ TimeControl avec les seuils de chess.com
+  (base + 40 × incrément : bullet < 3 min, blitz < 10 min, sinon rapide).
+- Précision moyenne, par couleur, et son évolution dans le temps.
 - Erreurs par phase (pour 100 coups joués dans chaque phase, pour comparer à poids égal).
 - Classement des causes les plus fréquentes, avec pour chacune des exemples cliquables
   (ouvre la partie sur la position).

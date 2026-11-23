@@ -179,12 +179,15 @@ export interface GameSummary {
   winningPly: number;
 }
 
-/** Cadence d'après le champ TimeControl de chess.com ("180+2", "1/86400"…). */
+/**
+ * Cadence d'après le champ TimeControl ("180+2", "1/86400"…), avec les seuils de chess.com
+ * (durée estimée = base + 40 × incrément) : bullet < 3 min, blitz < 10 min, sinon rapide.
+ */
 function speedOf(tc: string | undefined): string {
   if (!tc || tc.includes('/')) return 'daily';
   const [base, inc] = tc.split('+').map(Number);
   const t = base + 40 * (inc || 0);
-  return t < 180 ? 'bullet' : t < 480 ? 'blitz' : t < 1500 ? 'rapid' : 'classical';
+  return t < 180 ? 'bullet' : t < 600 ? 'blitz' : 'rapid';
 }
 
 /** Résume une fiche du point de vue de `username` ; null si ce joueur n'est pas dans la partie. */
@@ -262,7 +265,6 @@ export interface ProfileStats {
   games: GameSummary[];
   record: { win: number; draw: number; loss: number };
   accuracy: { all: number; w: number; b: number };
-  bySpeed: { speed: string; games: number; accuracy: number }[];
   byPhase: { phase: Phase; moves: number; mistakes: number; per100: number }[];
   /** Causes d'erreur, de la plus fréquente à la moins fréquente. */
   causes: { tag: Tag | 'gache'; count: number; examples: MistakeRecord[] }[];
@@ -330,11 +332,6 @@ export function profileStats(games: GameSummary[]): ProfileStats {
     .map(([month, gs]) => ({ month, games: gs.length, accuracy: mean(gs.map((g) => g.accuracy)) }))
     .sort((a, b) => a.month.localeCompare(b.month));
 
-  const bySpeed = [...groupBy(games, (g) => g.speed)].map(([speed, gs]) => ({
-    speed,
-    games: gs.length,
-    accuracy: mean(gs.map((g) => g.accuracy)),
-  }));
 
   // Forces : ce qui va mieux que le reste.
   const strengths: string[] = [];
@@ -363,7 +360,6 @@ export function profileStats(games: GameSummary[]): ProfileStats {
       w: mean(games.filter((g) => g.color === 'w').map((g) => g.accuracy)),
       b: mean(games.filter((g) => g.color === 'b').map((g) => g.accuracy)),
     },
-    bySpeed,
     byPhase,
     causes,
     totalMistakes: mistakes.length,

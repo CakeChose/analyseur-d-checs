@@ -798,13 +798,25 @@ async function refreshProfile() {
     el.innerHTML = `<p class="muted">Aucune partie analysée pour ${esc(user)}. Lance « Analyser mes parties ».</p>`;
     return;
   }
-  renderProfile(profileStats(games));
+  // Une synthèse par cadence : on ne mélange pas bullet et rapide.
+  const counts = SPEED_ORDER.map((sp) => [sp, games.filter((g) => g.speed === sp).length] as const).filter(([, n]) => n);
+  if (!counts.some(([sp]) => sp === profileSpeed)) profileSpeed = [...counts].sort((a, b) => b[1] - a[1])[0][0];
+  renderProfile(profileStats(games.filter((g) => g.speed === profileSpeed)), counts);
 }
 
 const pct = (x: number) => `${Math.round(x)} %`;
-const SPEEDS: Record<string, string> = { bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapide', classical: 'Classique', daily: 'Par jour' };
+const SPEED_ORDER = ['rapid', 'blitz', 'bullet', 'daily'];
+const SPEEDS: Record<string, string> = { bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapide', daily: 'Par jour' };
+/** Cadence affichée dans la synthèse du profil. */
+let profileSpeed = '';
 
-function renderProfile(s: ProfileStats) {
+function renderProfile(s: ProfileStats, counts: (readonly [string, number])[]) {
+  const speedBar =
+    counts.length > 1
+      ? `<div class="speed-bar">${counts
+          .map(([sp, n]) => `<button data-speed="${sp}" class="${sp === profileSpeed ? 'active' : ''}">${SPEEDS[sp]} (${n})</button>`)
+          .join('')}</div>`
+      : '';
   profileExamples = [];
   profileCauses = s.causes;
   const example = (m: MistakeRecord) => {
@@ -823,16 +835,13 @@ function renderProfile(s: ProfileStats) {
     .join('');
   const row = (cells: (string | number)[]) => `<tr>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
   $('profile-summary').innerHTML = `
+    ${speedBar}
     <section class="card">
-      <h2>Vue d'ensemble</h2>
-      <p><b>${s.games.length}</b> parties analysées · ${s.record.win} victoires, ${s.record.draw} nulles, ${s.record.loss} défaites</p>
+      <h2>Vue d'ensemble — ${SPEEDS[profileSpeed]}</h2>
+      <p><b>${s.games.length}</b> parties analysées en ${SPEEDS[profileSpeed].toLowerCase()} · ${s.record.win} victoires, ${s.record.draw} nulles, ${s.record.loss} défaites</p>
       <table class="stats">
         <tr><th>Précision moyenne</th><th>avec les Blancs</th><th>avec les Noirs</th></tr>
         ${row([s.accuracy.all.toFixed(1), s.accuracy.w.toFixed(1), s.accuracy.b.toFixed(1)])}
-      </table>
-      <table class="stats">
-        <tr><th>Cadence</th><th>Parties</th><th>Précision</th></tr>
-        ${s.bySpeed.map((b) => row([SPEEDS[b.speed] ?? b.speed, b.games, b.accuracy.toFixed(1)])).join('')}
       </table>
     </section>
     <section class="card">
@@ -869,6 +878,12 @@ function renderProfile(s: ProfileStats) {
 
 $('profile-summary').addEventListener('click', async (e) => {
   const t = e.target as HTMLElement;
+  const sp = t.closest<HTMLElement>('[data-speed]');
+  if (sp) {
+    profileSpeed = sp.dataset.speed!;
+    refreshProfile();
+    return;
+  }
   const ex = t.closest<HTMLElement>('[data-ex]');
   if (ex) {
     const m = profileExamples[Number(ex.dataset.ex)];
