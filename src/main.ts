@@ -4,11 +4,76 @@ import '@lichess-org/chessground/assets/chessground.base.css';
 import '@lichess-org/chessground/assets/chessground.brown.css';
 import '@lichess-org/chessground/assets/chessground.cburnett.css';
 import './style.css';
-import { parsePgn, type Game } from './game';
+import { parsePgn, uciToSan, type Game } from './game';
+import { Engine, formatScore, type EngineLine } from './engine';
+import { winPercent } from './winprob';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
 const board = Chessground($('board'), { viewOnly: true, coordinates: true });
+const engine = new Engine();
+const LIVE_DEPTH = 18;
+
+/** Met la barre d'évaluation à jour (score du point de vue des Blancs). */
+function setEvalBar(line: Pick<EngineLine, 'cp' | 'mate'> | null) {
+  const fill = $('evalbar-fill');
+  const text = $('evalbar-text');
+  if (!line) {
+    fill.style.height = '50%';
+    text.textContent = '';
+    return;
+  }
+  fill.style.height = `${winPercent(line)}%`;
+  const s = formatScore(line);
+  text.textContent = s.replace('+', '');
+  text.classList.toggle('black-ahead', s.startsWith('-'));
+}
+
+/** Analyse en direct la position affichée : barre, flèche, meilleures lignes. */
+function analyseLive(fen: string) {
+  const list = $('engine-lines');
+  if (!$<HTMLInputElement>('engine-on').checked) {
+    engine.stop();
+    list.innerHTML = '';
+    $('engine-status').textContent = '';
+    board.setAutoShapes([]);
+    return;
+  }
+  const over = game && ply === game.moves.length && /#$/.test(game.moves[ply - 1]?.san ?? '');
+  if (over) {
+    engine.stop();
+    setEvalBar({ mate: ply % 2 === 1 ? 1 : -1 });
+    $('evalbar-text').textContent = ply % 2 === 1 ? '1-0' : '0-1';
+    list.innerHTML = '';
+    $('engine-status').textContent = 'échec et mat';
+    board.setAutoShapes([]);
+    return;
+  }
+  $('engine-status').textContent = 'calcul…';
+  engine.analyse(fen, {
+    depth: LIVE_DEPTH,
+    multipv: 3,
+    onUpdate: (lines) => {
+      const best = lines[0];
+      if (!best) return;
+      setEvalBar(best);
+      $('engine-status').textContent = `profondeur ${best.depth}`;
+      const mv = best.pv[0];
+      board.setAutoShapes(
+        mv ? [{ orig: mv.slice(0, 2) as Key, dest: mv.slice(2, 4) as Key, brush: 'paleBlue' }] : [],
+      );
+      list.innerHTML = '';
+      for (const l of lines) {
+        const li = document.createElement('li');
+        const score = document.createElement('span');
+        score.className = 'score';
+        score.textContent = formatScore(l);
+        li.append(score, uciToSan(fen, l.pv.slice(0, 10)).join(' '));
+        list.append(li);
+      }
+    },
+  });
+}
 
 let game: Game | null = null;
 /** Nombre de coups joués dans la position affichée (0 = départ). */
@@ -28,6 +93,7 @@ function goTo(target: number) {
     el.classList.toggle('current', Number((el as HTMLElement).dataset.ply) === ply);
   });
   document.querySelector('.moves .current')?.scrollIntoView({ block: 'nearest' });
+  analyseLive(game.fens[ply]);
 }
 
 function renderMoves(g: Game) {
@@ -69,7 +135,11 @@ $('first').onclick = () => goTo(0);
 $('prev').onclick = () => goTo(ply - 1);
 $('next').onclick = () => goTo(ply + 1);
 $('last').onclick = () => goTo(Infinity);
-$('flip').onclick = () => board.toggleOrientation();
+$('flip').onclick = () => {
+  board.toggleOrientation();
+  $('evalbar').classList.toggle('flipped', board.state.orientation === 'black');
+};
+$('engine-on').onchange = () => game && analyseLive(game.fens[ply]);
 
 document.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLTextAreaElement) return;

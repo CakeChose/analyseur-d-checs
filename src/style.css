@@ -39,6 +39,89 @@ body {
   height: min(560px, 90vw);
 }
 
+.board-row {
+  display: flex;
+  gap: 8px;
+}
+
+.evalbar {
+  position: relative;
+  width: 24px;
+  background: #403d39;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.evalbar-fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 50%;
+  background: #f0eee9;
+  transition: height 0.4s ease;
+}
+.evalbar.flipped .evalbar-fill {
+  top: 0;
+  bottom: auto;
+}
+.evalbar-text {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4px;
+  text-align: center;
+  font-size: 10px;
+  font-weight: 700;
+  color: #403d39;
+}
+.evalbar-text.black-ahead {
+  bottom: auto;
+  top: 4px;
+  color: #f0eee9;
+}
+.evalbar.flipped .evalbar-text {
+  top: 4px;
+  bottom: auto;
+}
+.evalbar.flipped .evalbar-text.black-ahead {
+  top: auto;
+  bottom: 4px;
+}
+
+.muted {
+  color: var(--muted);
+  font-weight: normal;
+  font-size: 13px;
+}
+
+.engine {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+}
+.engine-head {
+  font-weight: 600;
+  cursor: pointer;
+}
+.engine-lines {
+  list-style: none;
+  margin: 6px 0 0;
+  padding: 0;
+  font-size: 13px;
+}
+.engine-lines li {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 2px 0;
+}
+.engine-lines .score {
+  display: inline-block;
+  min-width: 52px;
+  font-weight: 700;
+}
+
 .nav {
   display: flex;
   justify-content: center;

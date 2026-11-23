@@ -8,6 +8,20 @@ export interface Game {
   fens: string[];
 }
 
+/** Convertit une suite de coups UCI (e2e4, e7e8q…) en notation SAN depuis `fen`. */
+export function uciToSan(fen: string, uci: string[]): string[] {
+  const chess = new Chess(fen);
+  const san: string[] = [];
+  for (const u of uci) {
+    try {
+      san.push(chess.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u[4] }).san);
+    } catch {
+      break;
+    }
+  }
+  return san;
+}
+
 export function parsePgn(pgn: string): Game {
   const chess = new Chess();
   chess.loadPgn(pgn); // lève une erreur si le PGN est invalide

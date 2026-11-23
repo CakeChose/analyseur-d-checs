@@ -8,7 +8,13 @@
   <body>
     <main class="app">
       <section class="board-col">
-        <div id="board" class="board"></div>
+        <div class="board-row">
+          <div id="evalbar" class="evalbar" title="Évaluation">
+            <div id="evalbar-fill" class="evalbar-fill"></div>
+            <span id="evalbar-text" class="evalbar-text"></span>
+          </div>
+          <div id="board" class="board"></div>
+        </div>
         <div class="nav">
           <button id="first" title="Début">⏮</button>
           <button id="prev" title="Coup précédent (←)">◀</button>
@@ -19,6 +25,13 @@
       </section>
       <section class="side-col">
         <div id="game-info" class="game-info"></div>
+        <div class="engine">
+          <label class="engine-head">
+            <input type="checkbox" id="engine-on" checked />
+            Stockfish 19 <span id="engine-status" class="muted"></span>
+          </label>
+          <ol id="engine-lines" class="engine-lines"></ol>
+        </div>
         <ol id="moves" class="moves"></ol>
         <details class="import" open>
           <summary>Importer une partie (PGN)</summary>
