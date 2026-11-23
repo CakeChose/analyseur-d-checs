@@ -16,15 +16,30 @@
           <div id="board" class="board"></div>
         </div>
         <div class="nav">
-          <button id="first" title="Début">⏮</button>
+          <button id="first" title="Début (Origine)">⏮</button>
           <button id="prev" title="Coup précédent (←)">◀</button>
           <button id="next" title="Coup suivant (→)">▶</button>
           <button id="last" title="Fin">⏭</button>
           <button id="flip" title="Retourner l'échiquier">⇅</button>
         </div>
+        <div id="graph" class="graph"></div>
       </section>
       <section class="side-col">
         <div id="game-info" class="game-info"></div>
+        <div class="analyse-bar">
+          <button id="analyse" class="primary">Analyser la partie</button>
+          <label class="muted"
+            >Profondeur
+            <select id="depth">
+              <option value="12">12 (rapide)</option>
+              <option value="16" selected>16</option>
+              <option value="20">20 (précis)</option>
+            </select>
+          </label>
+        </div>
+        <div id="progress" class="progress" hidden><div id="progress-fill"></div></div>
+        <div id="report" class="report" hidden></div>
+        <div id="review" class="review" hidden></div>
         <div class="engine">
           <label class="engine-head">
             <input type="checkbox" id="engine-on" checked />
@@ -32,8 +47,8 @@
           </label>
           <ol id="engine-lines" class="engine-lines"></ol>
         </div>
-        <ol id="moves" class="moves"></ol>
-        <details class="import" open>
+        <div id="moves" class="moves"></div>
+        <details class="import">
           <summary>Importer une partie (PGN)</summary>
           <textarea id="pgn" rows="8" placeholder="Colle ici le PGN de ta partie"></textarea>
           <button id="load">Charger</button>
