@@ -1,3 +1,5 @@
 # Données brutes (base d'ouvertures) et réglages locaux : pas utiles dans le graphe
 src/data/
 .claude/
+# Le plan se lit directement : inutile (et coûteux) dans le graphe
+PLAN.md

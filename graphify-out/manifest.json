@@ -1,10 +1,4 @@
 {
-  "PLAN.md": {
-    "mtime": 1795456981.4148498,
-    "seen": 1795457295.9580176,
-    "ast_hash": "f4f9a830b931a9eabc1d838697abf2ea",
-    "semantic_hash": "f4f9a830b931a9eabc1d838697abf2ea"
-  },
   ".github/workflows/deploy.yml": {
     "mtime": 1795454261.4789622,
     "seen": 1795454830.2938402,
