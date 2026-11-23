@@ -107,18 +107,6 @@
     "ast_hash": "968289f3564c54fb4cab9302b05757bb",
     "semantic_hash": "968289f3564c54fb4cab9302b05757bb"
   },
-  "README.md": {
-    "mtime": 1795454261.4799614,
-    "seen": 1795454830.2938402,
-    "ast_hash": "9b1fcc592cab787b2b90349016ac2717",
-    "semantic_hash": "9b1fcc592cab787b2b90349016ac2717"
-  },
-  "index.html": {
-    "mtime": 1795456981.415851,
-    "seen": 1795457295.9580176,
-    "ast_hash": "1d6a42243ec6354de7ac4d877d0af00a",
-    "semantic_hash": "1d6a42243ec6354de7ac4d877d0af00a"
-  },
   "src/profile.ts": {
     "mtime": 1795456981.4201736,
     "seen": 1795457295.9580176,

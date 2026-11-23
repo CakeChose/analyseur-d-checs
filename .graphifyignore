@@ -3,3 +3,6 @@ src/data/
 .claude/
 # Le plan se lit directement : inutile (et coûteux) dans le graphe
 PLAN.md
+# Documents : relus par une IA à chaque changement, peu utiles pour naviguer dans le code
+index.html
+README.md
