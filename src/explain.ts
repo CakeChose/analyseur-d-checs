@@ -33,7 +33,7 @@ function listPieces(pieces: PieceSymbol[]): string {
 }
 
 /** Joue une ligne UCI ; renvoie les coups joués (s'arrête au premier coup invalide). */
-function playLine(fen: string, uci: string[], max: number): Move[] {
+export function playLine(fen: string, uci: string[], max: number): Move[] {
   const chess = new Chess(fen);
   const out: Move[] = [];
   for (const u of uci.slice(0, max)) {
@@ -50,7 +50,7 @@ function playLine(fen: string, uci: string[], max: number): Move[] {
  * Bilan des prises sur une ligne, pour le camp `who` : pièces gagnées
  * moins pièces perdues (les échanges de même type s'annulent).
  */
-function netCaptures(moves: Move[], who: Color): { won: PieceSymbol[]; lost: PieceSymbol[] } {
+export function netCaptures(moves: Move[], who: Color): { won: PieceSymbol[]; lost: PieceSymbol[] } {
   const won: PieceSymbol[] = [];
   const lost: PieceSymbol[] = [];
   for (const m of moves) {
@@ -80,7 +80,7 @@ function describeGain(c: { won: PieceSymbol[]; lost: PieceSymbol[] }): string {
 const lineText = (fen: string, uci: string[], n = 6) => uciToSan(fen, uci.slice(0, n)).join(' ');
 
 /** Mat pour le camp `who` dans cette ligne ? (score toujours du point de vue des Blancs) */
-function mateFor(line: EngineLine | undefined, who: Color): number | undefined {
+export function mateFor(line: EngineLine | undefined, who: Color): number | undefined {
   if (line?.mate === undefined) return undefined;
   const m = who === 'w' ? line.mate : -line.mate;
   return m > 0 ? m : undefined;
@@ -110,7 +110,7 @@ function hangingPieces(chess: Chess, who: Color): { sq: Square; type: PieceSymbo
 }
 
 /** La pièce qui vient de jouer attaque-t-elle plusieurs cibles de valeur ? (fourchette) */
-function forkTargets(chess: Chess, move: Move): PieceSymbol[] {
+export function forkTargets(chess: Chess, move: Move): PieceSymbol[] {
   const them: Color = move.color === 'w' ? 'b' : 'w';
   const targets: PieceSymbol[] = [];
   for (const row of chess.board()) {
@@ -140,7 +140,7 @@ const DIRS: Record<'b' | 'r', [number, number][]> = {
 };
 
 /** Clouage créé par la pièce qui vient de jouer : pièce clouée et pièce derrière. */
-function pinByMove(chess: Chess, move: Move): { pinned: Square; type: PieceSymbol; behind: PieceSymbol } | null {
+export function pinByMove(chess: Chess, move: Move): { pinned: Square; type: PieceSymbol; behind: PieceSymbol } | null {
   const type = move.piece;
   const dirs = type === 'b' ? DIRS.b : type === 'r' ? DIRS.r : type === 'q' ? [...DIRS.b, ...DIRS.r] : [];
   const file = move.to.charCodeAt(0) - 97;

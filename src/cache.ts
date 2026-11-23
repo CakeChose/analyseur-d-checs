@@ -1,14 +1,19 @@
 /**
- * Cache des analyses dans IndexedDB, pour ne pas réanalyser une partie déjà vue.
- * Toute erreur (navigation privée, stockage bloqué…) est ignorée : le cache est un bonus.
+ * Analyses enregistrées dans IndexedDB : une fiche par partie (voir `Fiche` dans profile.ts).
+ * Toute erreur (navigation privée, stockage bloqué…) est ignorée : on réanalysera simplement.
  */
 const DB = 'analyseur-echecs';
-const STORE = 'analyses';
+const STORE = 'games';
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB, 1);
-    req.onupgradeneeded = () => req.result.createObjectStore(STORE);
+    // Version 2 : une fiche par partie (la v1 stockait par partie ET par profondeur).
+    const req = indexedDB.open(DB, 2);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (db.objectStoreNames.contains('analyses')) db.deleteObjectStore('analyses');
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE);
+    };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
@@ -29,3 +34,4 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
 
 export const cacheGet = <T>(key: string) => run<T>('readonly', (s) => s.get(key));
 export const cachePut = (key: string, value: unknown) => run('readwrite', (s) => s.put(value, key));
+export const cacheAll = async <T>() => (await run<T[]>('readonly', (s) => s.getAll())) ?? [];

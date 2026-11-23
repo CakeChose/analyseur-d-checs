@@ -31,7 +31,8 @@ body {
  */
 .app {
   --side: clamp(300px, 22vw, 420px);
-  --board: clamp(320px, min(100vh - 250px, 100vw - 2 * var(--side) - 140px), 960px);
+  /* 300px : onglets + boutons + graphique sous l'échiquier. */
+  --board: clamp(320px, min(100vh - 300px, 100vw - 2 * var(--side) - 140px), 960px);
   display: grid;
   grid-template-columns: var(--side) auto var(--side);
   grid-template-areas: 'game board side';
@@ -83,6 +84,122 @@ body {
 .board {
   width: var(--board);
   height: var(--board);
+}
+
+/* Onglets Analyse / Mon profil */
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 12px 24px 0;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  border: none;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: none;
+  font-weight: 600;
+  color: var(--muted);
+}
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+[hidden] {
+  display: none !important;
+}
+
+/* Page profil */
+.profile {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.profile-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.profile-form input[type='text'],
+.profile-form input[type='number'] {
+  padding: 5px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.profile-form input[type='number'] {
+  width: 52px;
+}
+.spacer {
+  flex: 1;
+}
+label.button {
+  font-size: 16px;
+  padding: 6px 14px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  cursor: pointer;
+}
+.profile-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+}
+.card h2 {
+  font-size: 17px;
+  margin: 0 0 8px;
+}
+.wide {
+  grid-column: 1 / -1;
+}
+table.stats {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 8px 0;
+  font-size: 14px;
+}
+table.stats th,
+table.stats td {
+  padding: 4px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+}
+.cause {
+  border-bottom: 1px solid var(--border);
+  padding: 6px 0;
+}
+.cause summary {
+  cursor: pointer;
+}
+.cause > button {
+  margin: 6px 0;
+}
+.examples {
+  margin: 4px 0;
+  padding-left: 18px;
+  font-size: 13px;
+}
+button.link {
+  border: none;
+  background: none;
+  padding: 1px 0;
+  font-size: 13px;
+  color: var(--accent);
+  text-decoration: underline;
+  text-align: left;
 }
 
 .board-row {

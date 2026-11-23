@@ -131,6 +131,90 @@ https://cakechose.github.io/analyseur-d-checs/**
 5. ~~Explications : couche règles, puis couche LLM optionnelle.~~
 6. ~~Bonus : import chess.com/Lichess, coups de livre, mode Réessayer, moments clés.~~
 7. ~~Mise en ligne : GitHub Pages, déploiement automatique.~~
+8. ~~Profil du joueur : analyse en lot des parties chess.com, synthèse des forces et faiblesses, exercices ciblés (voir ci-dessous).~~
+
+## Phase 8 : profil du joueur — fait (onglet « Mon profil », `src/profile.ts`)
+Non fait : enfilade et attaque à la découverte, problèmes de la base Lichess, vrais comptes.
+
+Objectif : analyser les N dernières parties d'un joueur chess.com, garder ces analyses,
+et en tirer une synthèse de ses erreurs les plus fréquentes, puis des exercices ciblés.
+
+### Pas besoin de commentaires écrits sur les coups
+- La cause d'une erreur se déduit des mêmes faits vérifiés que les explications (couche 1,
+  `src/explain.ts`) : au lieu de phrases, chaque erreur reçoit des **étiquettes** calculées
+  (phase, pièce laissée en prise, tactique manquée…). On peut les compter ; Claude n'est pas nécessaire.
+
+### Comptes : commencer sans serveur
+- Le site est statique (GitHub Pages) : il ne peut rien stocker de son côté.
+- Version 1 : le « profil » est un pseudo chess.com mémorisé dans le navigateur, et les analyses sont
+  gardées dans IndexedDB (le cache existe déjà, `src/cache.ts`). Gratuit, privé, aucun compte à créer.
+  Limite : les données restent dans ce navigateur → bouton export / import d'un fichier pour les déplacer.
+- Plus tard, seulement si la synchronisation entre appareils devient nécessaire : un vrai système de
+  comptes avec une base en ligne (ex. Supabase, offre gratuite). Ça ajoute connexion, mots de passe,
+  données personnelles à protéger : à ne faire que si la version 1 ne suffit pas.
+
+### Stockage, export et doublons
+- Une fiche par partie dans IndexedDB, identifiée par le lien chess.com (ou une empreinte des
+  coups pour un PGN collé), avec la profondeur utilisée. Remplace le cache actuel, dont la clé
+  contient la profondeur (une même partie peut y être stockée deux fois).
+- Contenu d'une fiche : le PGN et les évaluations du moteur, allégées (meilleure suite limitée à
+  8 demi-coups + score du 2e coup). Les notes, la précision et les étiquettes ne sont pas stockées :
+  elles se recalculent à l'ouverture (rapide), donc un changement de seuils s'applique aussi aux
+  parties déjà analysées. ~15 Ko par partie.
+- Partie déjà présente : réutilisée tout de suite à l'ouverture ; « Réanalyser » avec une
+  profondeur plus grande la recalcule ; en lot, les parties déjà présentes sont sautées.
+- Export / import d'un fichier JSON **non compressé** (~1,5 Mo pour 100 parties : assez léger,
+  et ça épargne le processeur). L'import vérifie chaque fiche et fusionne (une partie présente des
+  deux côtés garde la version la plus profonde). Le fichier se range où l'on veut (disque, Drive, clé USB).
+
+### 8.1 Analyse en lot
+- Choisir le pseudo et le nombre de parties (ex. 20 / 50 / 100), filtrer par cadence (blitz, rapide…).
+- File d'attente : les parties sont analysées une par une, en arrière-plan, avec une progression.
+  Reprise possible si on ferme la page (chaque partie finie est enregistrée).
+- Plusieurs moteurs en parallèle (un Web Worker Stockfish par cœur, moins un pour la page),
+  chacun sur une partie différente : gain presque proportionnel au nombre de cœurs, sans
+  en-têtes COOP/COEP. Nombre de moteurs réglable + bouton pause (l'ordi chauffe, la batterie descend).
+- Profondeur 12 pour le lot (3 à 4 fois plus rapide que 16). Ordre de grandeur : 50 parties en
+  quelques minutes avec 6 moteurs. (Sauter les positions du livre : gain faible, pas fait.)
+- Les parties déjà analysées (cache) ne sont pas recalculées.
+
+### 8.2 Étiquettes de chaque erreur (imprécision, erreur, gaffe, raté)
+- **Phase** : ouverture (encore dans le livre ou avant le coup ~12), milieu, finale
+  (peu de matériel : plus de dames, ou ≤ 13 points de pièces par camp).
+- **Pièce laissée en prise** : l'adversaire gagne du matériel dès le coup suivant.
+- **Tactique subie** : le coup permet une fourchette, un clouage, un mat, une attaque double…
+- **Tactique manquée** : le meilleur coup gagnait du matériel ou matait ; type de motif
+  (fourchette, clouage, enfilade, attaque à la découverte, mat, pièce non défendue).
+- **Occasion manquée** : l'adversaire venait de gaffer et on n'en a pas profité.
+- **Avantage gâché** : position gagnante (≥ 80 %) qui finit en nulle ou en défaite.
+- **Pression du temps** : les PGN chess.com contiennent la pendule (`%clk`) → erreurs avec moins
+  de 10 % du temps restant.
+- Contexte : couleur jouée, cadence, ouverture (code ECO).
+- Le code de détection de `explain.ts` est réutilisé (fourchette, clouage, mat, bilan matériel).
+  Une erreur sans tactique détectée est classée « erreur de position ». Enfilade et attaque à la
+  découverte : plus tard.
+
+### 8.3 Synthèse du profil
+- Précision moyenne, par couleur, par cadence, et son évolution dans le temps.
+- Erreurs par phase (pour 100 coups joués dans chaque phase, pour comparer à poids égal).
+- Classement des causes les plus fréquentes, avec pour chacune des exemples cliquables
+  (ouvre la partie sur la position).
+- Ouvertures : les plus jouées, avec le score et la précision dans chacune.
+- Forces : ce qui va bien (peu d'erreurs dans une phase, tactiques trouvées, bonne conversion).
+
+### 8.4 Exercices ciblés
+- Version 1 : réutiliser le mode « Réessayer » sur **ses propres erreurs**, filtrées par faiblesse
+  (ex. « toutes mes fourchettes manquées »).
+- Option ensuite : la base de problèmes de Lichess (domaine public, classée par thème : fork, pin,
+  mateIn2…) pour proposer de nouveaux problèmes sur les thèmes faibles. Fichier volumineux :
+  n'en garder qu'un extrait par thème.
+
+### Risques de la phase 8
+- Temps d'analyse : le moteur lite dans le navigateur reste lent pour 100 parties ; prévoir la reprise
+  et éventuellement une profondeur plus faible.
+- Les étiquettes de tactique sont des règles simples : elles rateront certains motifs complexes.
+  Mieux vaut quelques catégories fiables que beaucoup de catégories approximatives.
+- Données locales : vider le navigateur efface le profil → l'export de fichier est important.
 
 ## Pistes pour la suite
 - Calibrer les seuils (surtout Brillant et Seul coup) sur des parties analysées par chess.com.

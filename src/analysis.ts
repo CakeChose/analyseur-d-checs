@@ -2,6 +2,7 @@ import { Chess, type Move } from 'chess.js';
 import type { Engine, EngineLine } from './engine';
 import type { Game } from './game';
 import { winPercent } from './winprob';
+import { openingName } from './openings';
 
 // ---------------------------------------------------------------------------
 // Réglages (seuils en points de probabilité de gain perdus par le joueur)
@@ -227,11 +228,19 @@ export function reviewMove(
   return { classification, loss, accuracy: moveAccuracy(loss), bestUci };
 }
 
+/** Coup de livre : la position atteinte est dans la base d'ouvertures, comme toutes celles d'avant. */
+function markBook(game: Game, moves: MoveReview[], i: number) {
+  if (openingName(game.fens[i + 1]) && (i === 0 || moves[i - 1].classification === 'book')) {
+    moves[i].classification = 'book';
+  }
+}
+
 /** Note chaque coup et calcule la précision à partir des positions évaluées. */
 export function reviewGame(game: Game, positions: PositionEval[], depth: number): GameAnalysis {
   const moves: MoveReview[] = [];
   game.moves.forEach((move, i) => {
     moves.push(reviewMove(move, positions[i], positions[i + 1], moves[i - 1]));
+    markBook(game, moves, i);
   });
   return { depth, positions, moves, accuracy: gameAccuracy(positions.map((p) => p.win)) };
 }
@@ -254,7 +263,10 @@ export async function analyseGame(
     if (isCancelled()) return null;
     positions.push(ev);
     const i = positions.length - 1;
-    if (i > 0) moves.push(reviewMove(game.moves[i - 1], positions[i - 1], ev, moves[i - 2]));
+    if (i > 0) {
+      moves.push(reviewMove(game.moves[i - 1], positions[i - 1], ev, moves[i - 2]));
+      markBook(game, moves, i - 1);
+    }
     onProgress(positions, moves);
   }
   return { depth, positions, moves, accuracy: gameAccuracy(positions.map((p) => p.win)) };

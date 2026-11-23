@@ -6,7 +6,50 @@
     <title>Analyseur d'échecs</title>
   </head>
   <body>
-    <main class="app">
+    <nav class="tabs">
+      <button id="tab-analyse" class="tab active">Analyse</button>
+      <button id="tab-profil" class="tab">Mon profil</button>
+    </nav>
+
+    <!-- Page profil : analyse en lot des parties chess.com et synthèse -->
+    <main id="view-profil" class="profile" hidden>
+      <section class="card wide profile-form">
+        <label>Pseudo chess.com <input id="profile-user" type="text" autocomplete="off" /></label>
+        <label
+          >Parties
+          <select id="profile-count">
+            <option>20</option>
+            <option selected>50</option>
+            <option>100</option>
+          </select>
+        </label>
+        <label
+          >Cadence
+          <select id="profile-speed">
+            <option value="">Toutes</option>
+            <option value="bullet">Bullet</option>
+            <option value="blitz">Blitz</option>
+            <option value="rapid">Rapide</option>
+            <option value="daily">Par jour</option>
+          </select>
+        </label>
+        <label title="Un moteur par cœur du processeur va plus vite, mais l'ordi chauffe davantage"
+          >Moteurs <input id="profile-engines" type="number" min="1" max="16"
+        /></label>
+        <button id="profile-run" class="primary">Analyser mes parties</button>
+        <button id="profile-stop" hidden>Pause</button>
+        <span class="spacer"></span>
+        <button id="profile-export" title="Télécharger un fichier avec toutes les analyses">Exporter</button>
+        <label class="button" title="Ajouter les analyses d'un fichier exporté"
+          >Importer <input id="profile-import" type="file" accept=".json,application/json" hidden
+        /></label>
+      </section>
+      <div id="profile-progress" class="progress wide" hidden><div id="profile-progress-fill"></div></div>
+      <p id="profile-status" class="muted wide"></p>
+      <div id="profile-summary" class="profile-grid"></div>
+    </main>
+
+    <main id="view-analyse" class="app">
       <!-- Colonne de gauche : la partie, l'analyse, le bilan, l'import -->
       <section class="game-col">
         <div>

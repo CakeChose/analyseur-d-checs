@@ -5,7 +5,7 @@ import '@lichess-org/chessground/assets/chessground.base.css';
 import '@lichess-org/chessground/assets/chessground.brown.css';
 import '@lichess-org/chessground/assets/chessground.cburnett.css';
 import './style.css';
-import { parsePgn, uciToSan, type Game } from './game';
+import { gameId, parsePgn, uciToSan, type Game } from './game';
 import { Engine, formatScore } from './engine';
 import {
   analyseGame,
@@ -22,6 +22,18 @@ import { Chess, type Square } from 'chess.js';
 import { buildTree, deleteNode, mainline, playMove, type TreeNode } from './tree';
 import { drawGraph } from './graph';
 import { cacheGet, cachePut } from './cache';
+import {
+  analyseProfile,
+  exportProfile,
+  importProfile,
+  loadProfile,
+  profileStats,
+  TAGS,
+  toFiche,
+  type Fiche,
+  type MistakeRecord,
+  type ProfileStats,
+} from './profile';
 import { winPercent } from './winprob';
 import { explainMove } from './explain';
 import { getApiKey, rephrase, setApiKey } from './llm';
@@ -42,6 +54,8 @@ let game: Game | null = null;
 let root: TreeNode | null = null;
 let current: TreeNode | null = null;
 let analysis: GameAnalysis | null = null;
+/** Texte PGN de la partie affichée (gardé tel quel dans sa fiche). */
+let currentPgn = '';
 /** Analyse complète en cours (le moteur lui est réservé). */
 let analysing = false;
 /** Incrémenté pour annuler une analyse en cours (nouvelle partie chargée…). */
@@ -458,10 +472,7 @@ function applyAnalysis(positions: PositionEval[], moves: MoveReview[], depth: nu
     nodes[i].eval = p;
     nodes[i].evalDepth = depth;
   });
-  moves.forEach((m, i) => {
-    nodes[i + 1].review = m;
-    if (isBookNode(nodes[i + 1])) m.classification = 'book';
-  });
+  moves.forEach((m, i) => (nodes[i + 1].review = m));
   analysis = {
     depth,
     positions,
@@ -482,7 +493,7 @@ async function runAnalysis() {
   const g = game;
   const token = ++analysisToken;
   const depth = Number($<HTMLSelectElement>('depth').value);
-  const key = `d${depth}:${g.fens[0]}:${g.moves.map((m) => m.san).join(' ')}`;
+  const pgn = currentPgn;
   analysing = true;
   $<HTMLButtonElement>('analyse').disabled = true;
   engine.stop();
@@ -490,9 +501,9 @@ async function runAnalysis() {
   await loadBook();
 
   let result: GameAnalysis | null;
-  const cached = await cacheGet<PositionEval[]>(key);
-  if (cached && cached.length === g.fens.length) {
-    result = reviewGame(g, cached, depth);
+  const stored = await cacheGet<Fiche>(gameId(g));
+  if (stored && stored.depth >= depth && stored.positions.length === g.fens.length) {
+    result = reviewGame(g, stored.positions, stored.depth);
   } else {
     setProgress(0, g.fens.length);
     result = await analyseGame(
@@ -507,18 +518,33 @@ async function runAnalysis() {
       },
       () => token !== analysisToken,
     );
-    if (result) cachePut(key, result.positions);
+    if (result) cachePut(gameId(g), toFiche(g, pgn, result.positions, depth));
   }
   if (token !== analysisToken) return; // une autre partie a été chargée entre-temps
   analysing = false;
   $<HTMLButtonElement>('analyse').disabled = false;
-  $('analyse').textContent = 'Réanalyser';
   setProgress(1, 1);
-  if (!result) return;
-  applyAnalysis(result.positions, result.moves, depth);
+  if (result) finishAnalysis(result);
+}
+
+/** Affiche une analyse terminée (calculée à l'instant ou relue depuis une fiche). */
+function finishAnalysis(result: GameAnalysis) {
+  applyAnalysis(result.positions, result.moves, result.depth);
   analysis = result;
+  $('analyse').textContent = `Réanalyser (profondeur ${result.depth})`;
   renderReport();
   if (current) show(current);
+}
+
+/** Ouvre une partie enregistrée, déjà analysée, éventuellement à un coup donné. */
+async function openFiche(f: Fiche, ply?: number) {
+  const keep = puzzle;
+  load(f.pgn);
+  puzzle = keep;
+  await loadBook();
+  if (!game || !root) return;
+  finishAnalysis(reviewGame(game, f.positions, f.depth));
+  if (ply !== undefined) show(mainline(root)[Math.min(ply, game.moves.length)]);
 }
 
 // ---------------------------------------------------------------------------
@@ -576,24 +602,52 @@ function estimateElo(accuracy: number): number {
   return pts.at(-1)![1];
 }
 
-/** Exercice en cours : retrouver un meilleur coup là où le joueur s'est trompé. */
-let puzzle: { queue: TreeNode[]; index: number; state: 'try' | 'wrong' | 'solved' | 'shown'; tried?: string } | null =
-  null;
+/**
+ * Exercice en cours : retrouver un meilleur coup là où le joueur s'est trompé.
+ * Chaque exercice est un coup fautif (partie + numéro de demi-coup), éventuellement d'une autre partie.
+ */
+let puzzle: {
+  queue: { id: string; ply: number }[];
+  index: number;
+  state: 'try' | 'wrong' | 'solved' | 'shown';
+  tried?: string;
+} | null = null;
 
 const BAD: Classification[] = ['inaccuracy', 'mistake', 'miss', 'blunder'];
 
-function startPuzzles(color: 'w' | 'b') {
-  if (!root) return;
-  const queue = mainline(root).filter(
-    (n) => n.move?.color === color && n.review && BAD.includes(n.review.classification) && n.parent?.eval?.lines[0],
-  );
-  if (!queue.length) {
-    $('report-msg').textContent = 'Aucune erreur à retravailler pour ce camp.';
-    return;
+/** Le coup fautif de l'exercice en cours (dans la partie affichée). */
+const puzzleTarget = () => mainline(root!)[puzzle!.queue[puzzle!.index].ply];
+
+/** Affiche l'exercice courant, en ouvrant sa partie si ce n'est pas celle affichée. */
+async function showPuzzle() {
+  if (!puzzle) return;
+  const item = puzzle.queue[puzzle.index];
+  if (!game || gameId(game) !== item.id) {
+    const f = await cacheGet<Fiche>(item.id);
+    if (!f) return;
+    await openFiche(f);
   }
+  const target = puzzleTarget();
+  const color = target.move!.color === 'w' ? 'white' : 'black';
+  if (board.state.orientation !== color) $('flip').click();
+  show(target.parent!);
+}
+
+function startPuzzleQueue(queue: { id: string; ply: number }[]) {
+  if (!queue.length) return false;
   puzzle = { queue, index: 0, state: 'try' };
-  if (board.state.orientation !== (color === 'w' ? 'white' : 'black')) $('flip').click();
-  show(queue[0].parent!);
+  showView('analyse');
+  showPuzzle();
+  return true;
+}
+
+function startPuzzles(color: 'w' | 'b') {
+  if (!root || !game) return;
+  const id = gameId(game);
+  const queue = mainline(root)
+    .filter((n) => n.move?.color === color && n.review && BAD.includes(n.review.classification) && n.parent?.eval?.lines[0])
+    .map((n) => ({ id, ply: n.ply }));
+  if (!startPuzzleQueue(queue)) $('report-msg').textContent = 'Aucune erreur à retravailler pour ce camp.';
 }
 
 /** Les coups acceptés : le meilleur, et ceux presque aussi bons selon le moteur. */
@@ -608,7 +662,7 @@ function goodAnswers(position: TreeNode): string[] {
 
 function puzzleMove(orig: Key, dest: Key) {
   if (!puzzle || !current) return;
-  const target = puzzle.queue[puzzle.index];
+  const target = puzzleTarget();
   const chess = new Chess(current.fen);
   const piece = chess.get(orig as Square);
   const promo = piece?.type === 'p' && (dest[1] === '8' || dest[1] === '1') ? 'q' : '';
@@ -624,7 +678,7 @@ function puzzleMove(orig: Key, dest: Key) {
 function renderPuzzle() {
   if (!puzzle) return;
   const box = $('review');
-  const target = puzzle.queue[puzzle.index];
+  const target = puzzleTarget();
   const position = target.parent!;
   const bestUci = position.eval!.lines[0].pv[0];
   const bestSan = uciToSan(position.fen, [bestUci])[0];
@@ -658,7 +712,7 @@ function renderPuzzle() {
     button('Suivant', () => {
       puzzle!.index++;
       puzzle!.state = 'try';
-      show(puzzle!.queue[puzzle!.index].parent!);
+      showPuzzle();
     });
   }
   button('Arrêter', () => {
@@ -701,6 +755,203 @@ async function searchOnline() {
 }
 
 // ---------------------------------------------------------------------------
+// Profil du joueur
+// ---------------------------------------------------------------------------
+
+/** Profondeur de l'analyse en lot : 3 à 4 fois plus rapide que 16, suffisant pour repérer les erreurs. */
+const PROFILE_DEPTH = 12;
+const USER_KEY = 'profil-pseudo';
+let profileRunning = false;
+let profileStop = false;
+/** Exemples cliquables de la synthèse affichée (index = attribut data-ex). */
+let profileExamples: MistakeRecord[] = [];
+let profileCauses: ProfileStats['causes'] = [];
+
+function showView(view: 'analyse' | 'profil') {
+  $('view-analyse').hidden = view !== 'analyse';
+  $('view-profil').hidden = view !== 'profil';
+  $('tab-analyse').classList.toggle('active', view === 'analyse');
+  $('tab-profil').classList.toggle('active', view === 'profil');
+  if (view === 'profil') refreshProfile();
+}
+
+const profileUser = () => $<HTMLInputElement>('profile-user').value.trim();
+
+function saveUser(user: string) {
+  try {
+    localStorage.setItem(USER_KEY, user);
+  } catch {
+    /* stockage indisponible : il faudra retaper le pseudo */
+  }
+}
+
+async function refreshProfile() {
+  const user = profileUser();
+  const el = $('profile-summary');
+  if (!user) {
+    el.innerHTML = '<p class="muted">Indique ton pseudo chess.com pour voir ton profil.</p>';
+    return;
+  }
+  await loadBook();
+  const games = await loadProfile(user);
+  if (!games.length) {
+    el.innerHTML = `<p class="muted">Aucune partie analysée pour ${esc(user)}. Lance « Analyser mes parties ».</p>`;
+    return;
+  }
+  renderProfile(profileStats(games));
+}
+
+const pct = (x: number) => `${Math.round(x)} %`;
+const SPEEDS: Record<string, string> = { bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapide', classical: 'Classique', daily: 'Par jour' };
+
+function renderProfile(s: ProfileStats) {
+  profileExamples = [];
+  profileCauses = s.causes;
+  const example = (m: MistakeRecord) => {
+    profileExamples.push(m);
+    const what = m.san ? `coup ${Math.ceil(m.ply / 2)} : ${esc(m.san)} (${LABELS[m.classification].name.toLowerCase()})` : `position gagnante au coup ${Math.ceil(m.ply / 2)}`;
+    return `<li><button class="link" data-ex="${profileExamples.length - 1}">contre ${esc(m.opponent)} · ${what}</button></li>`;
+  };
+  const causes = s.causes
+    .map((c, i) => {
+      const label = c.tag === 'gache' ? 'Avantage gâché (position gagnante, partie non gagnée)' : TAGS[c.tag];
+      const share = c.tag === 'gache' ? `${pct((100 * c.count) / s.games.length)} des parties` : `${pct((100 * c.count) / s.totalMistakes)} des erreurs`;
+      const train = c.tag === 'gache' ? '' : `<button data-train="${i}">S'entraîner (${c.count} exercice${c.count > 1 ? 's' : ''})</button>`;
+      return `<details class="cause"><summary><b>${label}</b> <span class="muted">— ${c.count} · ${share}</span></summary>
+        ${train}<ul class="examples">${c.examples.slice(-10).reverse().map(example).join('')}</ul></details>`;
+    })
+    .join('');
+  const row = (cells: (string | number)[]) => `<tr>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
+  $('profile-summary').innerHTML = `
+    <section class="card">
+      <h2>Vue d'ensemble</h2>
+      <p><b>${s.games.length}</b> parties analysées · ${s.record.win} victoires, ${s.record.draw} nulles, ${s.record.loss} défaites</p>
+      <table class="stats">
+        <tr><th>Précision moyenne</th><th>avec les Blancs</th><th>avec les Noirs</th></tr>
+        ${row([s.accuracy.all.toFixed(1), s.accuracy.w.toFixed(1), s.accuracy.b.toFixed(1)])}
+      </table>
+      <table class="stats">
+        <tr><th>Cadence</th><th>Parties</th><th>Précision</th></tr>
+        ${s.bySpeed.map((b) => row([SPEEDS[b.speed] ?? b.speed, b.games, b.accuracy.toFixed(1)])).join('')}
+      </table>
+    </section>
+    <section class="card">
+      <h2>Points forts</h2>
+      ${s.strengths.length ? `<ul>${s.strengths.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p class="muted">Pas encore assez de parties pour en dégager.</p>'}
+    </section>
+    <section class="card wide">
+      <h2>Erreurs les plus fréquentes</h2>
+      <p class="muted">${s.totalMistakes} erreurs (imprécisions, erreurs, gaffes, ratés). Une erreur peut avoir plusieurs causes.</p>
+      ${causes}
+    </section>
+    <section class="card">
+      <h2>Erreurs par phase de jeu</h2>
+      <table class="stats">
+        <tr><th>Phase</th><th>Coups joués</th><th>Erreurs</th><th>Pour 100 coups</th></tr>
+        ${s.byPhase.map((p) => row([p.phase, p.moves, p.mistakes, p.per100.toFixed(1)])).join('')}
+      </table>
+    </section>
+    <section class="card">
+      <h2>Ouvertures</h2>
+      <table class="stats">
+        <tr><th>Ouverture</th><th>Parties</th><th>Points</th><th>Précision</th></tr>
+        ${s.openings.map((o) => row([esc(o.name), o.games, pct(o.score), o.accuracy.toFixed(1)])).join('')}
+      </table>
+    </section>
+    <section class="card">
+      <h2>Évolution</h2>
+      <table class="stats">
+        <tr><th>Mois</th><th>Parties</th><th>Précision</th></tr>
+        ${s.byMonth.map((m) => row([esc(m.month.replace('.', '-')), m.games, m.accuracy.toFixed(1)])).join('')}
+      </table>
+    </section>`;
+}
+
+$('profile-summary').addEventListener('click', async (e) => {
+  const t = e.target as HTMLElement;
+  const ex = t.closest<HTMLElement>('[data-ex]');
+  if (ex) {
+    const m = profileExamples[Number(ex.dataset.ex)];
+    const f = await cacheGet<Fiche>(m.id);
+    if (!f) return;
+    showView('analyse');
+    await openFiche(f, m.ply);
+    return;
+  }
+  const train = t.closest<HTMLElement>('[data-train]');
+  if (train) startPuzzleQueue(profileCauses[Number(train.dataset.train)].examples.map((m) => ({ id: m.id, ply: m.ply })));
+});
+
+async function runProfile() {
+  const user = profileUser();
+  if (!user || profileRunning) return;
+  saveUser(user);
+  profileRunning = true;
+  profileStop = false;
+  $('profile-run').hidden = true;
+  $('profile-stop').hidden = false;
+  const status = $('profile-status');
+  const engines = Math.max(1, Number($<HTMLInputElement>('profile-engines').value) || 1);
+  status.textContent = 'Récupération des parties sur chess.com…';
+  $('profile-progress').hidden = false;
+  try {
+    await loadBook();
+    const res = await analyseProfile(
+      user,
+      Number($<HTMLSelectElement>('profile-count').value),
+      $<HTMLSelectElement>('profile-speed').value,
+      engines,
+      PROFILE_DEPTH,
+      (done, total) => {
+        $('profile-progress-fill').style.width = `${total ? (100 * done) / total : 100}%`;
+        status.textContent = `Analyse : ${done}/${total} parties (${engines} moteur${engines > 1 ? 's' : ''}, profondeur ${PROFILE_DEPTH})…`;
+        if (done % 5 === 0) refreshProfile();
+      },
+      () => profileStop,
+    );
+    status.textContent = profileStop
+      ? 'En pause. Les parties terminées sont enregistrées : relance pour continuer.'
+      : `Terminé : ${res.total} parties (${res.skipped} étaient déjà analysées).`;
+  } catch (e) {
+    status.textContent = `Impossible d'analyser le profil : ${(e as Error).message}.`;
+  } finally {
+    profileRunning = false;
+    $('profile-run').hidden = false;
+    $('profile-stop').hidden = true;
+    $('profile-progress').hidden = true;
+    refreshProfile();
+  }
+}
+
+async function exportFile() {
+  const user = profileUser();
+  const blob = await exportProfile(user);
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `profil-echecs-${user || 'sans-pseudo'}-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+async function importFile(file: File) {
+  const status = $('profile-status');
+  try {
+    const r = await importProfile(await file.text());
+    if (!profileUser() && r.username) {
+      $<HTMLInputElement>('profile-user').value = r.username;
+      saveUser(r.username);
+    }
+    status.textContent =
+      `Import : ${r.added} partie${r.added > 1 ? 's' : ''} ajoutée${r.added > 1 ? 's' : ''}, ${r.kept} déjà présente${r.kept > 1 ? 's' : ''}` +
+      (r.invalid ? `, ${r.invalid} ignorée${r.invalid > 1 ? 's' : ''} (illisibles)` : '') +
+      '.';
+  } catch (e) {
+    status.textContent = `Import impossible : ${(e as Error).message}.`;
+  }
+  refreshProfile();
+}
+
+// ---------------------------------------------------------------------------
 // Chargement et navigation
 // ---------------------------------------------------------------------------
 
@@ -720,11 +971,19 @@ function load(pgn: string) {
   setProgress(1, 1);
   $('error').textContent = '';
   game = g;
+  currentPgn = pgn;
   root = buildTree(g);
   analysis = null;
   puzzle = null;
   $('opening').textContent = '';
-  loadBook().then(showOpening);
+  // Partie déjà analysée : on la réaffiche tout de suite, sans moteur.
+  loadBook().then(async () => {
+    showOpening();
+    const f = await cacheGet<Fiche>(gameId(g));
+    if (f && game === g && !analysis && !analysing && f.positions.length === g.fens.length) {
+      finishAnalysis(reviewGame(g, f.positions, f.depth));
+    }
+  });
   const h = g.headers;
   $('game-info').textContent = h.White ? `${h.White} – ${h.Black}${h.Result ? ` (${h.Result})` : ''}` : '';
   renderReport();
@@ -750,6 +1009,30 @@ const go = {
 };
 
 $('load').onclick = () => load($<HTMLTextAreaElement>('pgn').value);
+$('tab-analyse').onclick = () => showView('analyse');
+$('tab-profil').onclick = () => showView('profil');
+$('profile-run').onclick = runProfile;
+$('profile-stop').onclick = () => {
+  profileStop = true;
+  $('profile-status').textContent = 'Mise en pause après la position en cours…';
+};
+$('profile-export').onclick = exportFile;
+$<HTMLInputElement>('profile-import').onchange = (e) => {
+  const input = e.target as HTMLInputElement;
+  if (input.files?.[0]) importFile(input.files[0]);
+  input.value = '';
+};
+$('profile-user').addEventListener('change', () => {
+  saveUser(profileUser());
+  refreshProfile();
+});
+try {
+  $<HTMLInputElement>('profile-user').value = localStorage.getItem(USER_KEY) ?? '';
+} catch {
+  /* stockage indisponible */
+}
+// Un moteur par cœur, en laissant un cœur à la page (8 au plus par défaut).
+$<HTMLInputElement>('profile-engines').value = String(Math.min(8, Math.max(1, (navigator.hardwareConcurrency || 2) - 1)));
 $('analyse').onclick = runAnalysis;
 $('first').onclick = go.first;
 $('prev').onclick = go.prev;

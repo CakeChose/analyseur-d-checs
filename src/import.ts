@@ -15,7 +15,8 @@ export interface OnlineGame {
 
 const MAX = 20;
 
-export async function fetchChessCom(user: string): Promise<OnlineGame[]> {
+/** Les `max` dernières parties chess.com du joueur, d'une cadence donnée si `speed` est fourni. */
+export async function fetchChessCom(user: string, max = MAX, speed?: string): Promise<OnlineGame[]> {
   const base = `https://api.chess.com/pub/player/${encodeURIComponent(user.toLowerCase())}`;
   const res = await fetch(`${base}/games/archives`);
   if (res.status === 404) throw new Error('joueur introuvable sur chess.com');
@@ -26,7 +27,7 @@ export async function fetchChessCom(user: string): Promise<OnlineGame[]> {
   for (const url of archives.slice().reverse()) {
     const month = await fetch(url).then((r) => r.json());
     for (const g of (month.games ?? []).slice().reverse()) {
-      if (!g.pgn || g.rules !== 'chess') continue;
+      if (!g.pgn || g.rules !== 'chess' || (speed && g.time_class !== speed)) continue;
       const r = (x: string) => (x === 'win' ? 1 : ['agreed', 'repetition', 'stalemate', 'insufficient', '50move', 'timevsinsufficient'].includes(x) ? 0.5 : 0);
       const w = r(g.white.result);
       games.push({
@@ -37,9 +38,9 @@ export async function fetchChessCom(user: string): Promise<OnlineGame[]> {
         speed: g.time_class,
         pgn: g.pgn,
       });
-      if (games.length >= MAX) return games;
+      if (games.length >= max) return games;
     }
-    if (games.length >= MAX) break;
+    if (games.length >= max) break;
   }
   return games;
 }
