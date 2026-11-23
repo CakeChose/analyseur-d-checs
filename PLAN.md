@@ -44,7 +44,7 @@ https://cakechose.github.io/analyseur-d-checs/**
 | `winprob.ts` | Conversion évaluation → probabilité de gain |
 | `tree.ts` | Arbre des coups (partie principale + variantes) |
 | `explain.ts` | Explications couche 1 (faits vérifiés) |
-| `llm.ts` | Explications couche 2 (Claude, optionnelle) |
+| `profile.ts` | Profil joueur : fiches, étiquettes des erreurs, synthèse, analyse en lot, export / import |
 | `openings.ts` + `data/openings.json` | Base d'ouvertures (coups de livre, nom de l'ouverture) |
 | `import.ts` | Parties chess.com / Lichess |
 | `graph.ts` | Graphique d'évaluation |
@@ -105,10 +105,8 @@ https://cakechose.github.io/analyseur-d-checs/**
   - pièce en prise, mat forcé, fourchette, clouage (devant le roi ou la dame) ;
   - ce que le meilleur coup obtenait (gain de matériel, mat en N, évaluation) ;
   - sacrifice d'un coup brillant, seul coup, occasion manquée.
-- Couche 2 (optionnelle) : Claude (Opus 5.5, via le SDK Anthropic chargé à la demande) reformule ces faits.
-  - Clé API fournie par l'utilisateur, gardée dans son navigateur.
-  - Le LLM reçoit uniquement des faits vérifiés par le moteur : un LLM seul invente des coups aux échecs.
-  - Pas encore testé avec une vraie clé.
+- Couche 2 (reformulation par Claude avec une clé API) : retirée. Demander une clé API donnait
+  au site un air douteux, et les faits de la couche 1 suffisent.
 
 ### Interface (UI) — fait
 - Trois colonnes sur grand écran : partie / bilan / import à gauche, échiquier + barre d'éval au centre,
@@ -128,10 +126,11 @@ https://cakechose.github.io/analyseur-d-checs/**
 2. ~~Moteur : Worker Stockfish WASM, barre d'évaluation, flèche du meilleur coup en direct.~~
 3. ~~Analyse complète : pipeline, win%, précision, classification, graphique d'évaluation.~~
 4. ~~Mode exploration : jouer ses coups, arbre de variantes, analyse en direct.~~
-5. ~~Explications : couche règles, puis couche LLM optionnelle.~~
+5. ~~Explications : couche règles (la couche LLM a été retirée ensuite).~~
 6. ~~Bonus : import chess.com/Lichess, coups de livre, mode Réessayer, moments clés.~~
 7. ~~Mise en ligne : GitHub Pages, déploiement automatique.~~
 8. ~~Profil du joueur : analyse en lot des parties chess.com, synthèse des forces et faiblesses, exercices ciblés (voir ci-dessous).~~
+9. Version mobile : interface adaptée au téléphone + appli installable (PWA) (voir ci-dessous).
 
 ## Phase 8 : profil du joueur — fait (onglet « Mon profil », `src/profile.ts`)
 Non fait : enfilade et attaque à la découverte, problèmes de la base Lichess, vrais comptes.
@@ -142,7 +141,7 @@ et en tirer une synthèse de ses erreurs les plus fréquentes, puis des exercice
 ### Pas besoin de commentaires écrits sur les coups
 - La cause d'une erreur se déduit des mêmes faits vérifiés que les explications (couche 1,
   `src/explain.ts`) : au lieu de phrases, chaque erreur reçoit des **étiquettes** calculées
-  (phase, pièce laissée en prise, tactique manquée…). On peut les compter ; Claude n'est pas nécessaire.
+  (phase, pièce laissée en prise, tactique manquée…). On peut les compter ; aucune IA n'est nécessaire.
 
 ### Comptes : commencer sans serveur
 - Le site est statique (GitHub Pages) : il ne peut rien stocker de son côté.
@@ -223,12 +222,43 @@ et en tirer une synthèse de ses erreurs les plus fréquentes, puis des exercice
   Mieux vaut quelques catégories fiables que beaucoup de catégories approximatives.
 - Données locales : vider le navigateur efface le profil → l'export de fichier est important.
 
+## Phase 9 : version mobile (à faire)
+
+Objectif : un site agréable sur téléphone, installable comme une appli, sans passer par les magasins.
+
+### 9.1 Interface adaptée au téléphone
+- Échiquier en pleine largeur en haut, puis le commentaire du coup et les boutons de navigation.
+- Panneaux repliables (moteur, liste des coups, bilan, import) pour ne pas faire défiler sans fin.
+- Boutons assez grands pour le doigt (≥ 44 px), pas d'action cachée au survol.
+- Navigation entre les coups par glissement du doigt sur l'échiquier (en plus des boutons),
+  à la place des raccourcis clavier.
+- Page profil : tableaux empilés au lieu de déborder, onglets de cadence défilants.
+- Tester sur de vrais téléphones (Android/Chrome et iPhone/Safari).
+
+### 9.2 Appli installable (PWA)
+- Manifeste (nom, icônes, couleurs, plein écran) : icône sur l'écran d'accueil.
+- Service worker qui garde le site en cache : fonctionnement hors ligne (tout tourne déjà dans
+  le navigateur ; seul l'import chess.com / Lichess demande le réseau).
+- Mise à jour : prévenir quand une nouvelle version est disponible.
+
+### 9.3 Réglages adaptés au mobile
+- Profondeur et nombre de moteurs plus faibles par défaut sur téléphone (moins de cœurs, chauffe,
+  batterie) : ex. profondeur 10, 2 moteurs.
+- Garder l'écran allumé pendant l'analyse en lot (API Wake Lock) : les navigateurs mobiles
+  suspendent une page en arrière-plan ; la reprise automatique existe déjà.
+
+### Risques de la phase 9
+- Analyse 2 à 4 fois plus lente que sur ordinateur.
+- iPhone : Safari peut effacer les données d'un site non installé après ~7 jours sans visite →
+  conseiller l'installation (PWA) et l'export du profil.
+- Pas de présence dans l'App Store / le Play Store : possible plus tard (Capacitor), mais comptes
+  développeur payants et validation des magasins.
+
 ## Pistes pour la suite
 - Calibrer les seuils (surtout Brillant et Seul coup) sur des parties analysées par chess.com.
-- Tester la couche Claude avec une vraie clé API.
 - Choix de la pièce lors d'une promotion (aujourd'hui : dame automatique).
 - Version multithread de Stockfish pour analyser plus vite (nécessite les en-têtes COOP/COEP, non disponibles sur GitHub Pages).
-- Appli installable (PWA) ou appli de bureau (Tauri).
+- Appli de bureau (Tauri).
 
 ## Risques
 - Les seuils de classification ne correspondront jamais exactement à chess.com (leur modèle est privé) : on vise "cohérent", pas "identique".

@@ -7,7 +7,7 @@ entièrement dans le navigateur avec Stockfish 19 (WebAssembly).
 
 - Import d'une partie (PGN) ou de tes dernières parties chess.com / Lichess
 - Analyse complète : note de chaque coup (Brillant, Meilleur… Gaffe), précision, graphique
-- Explications des erreurs à partir des calculs du moteur, reformulées par Claude en option
+- Explications des erreurs à partir des calculs du moteur
 - Variantes jouées sur l'échiquier, moments clés, mode « Réessayer mes erreurs »
 
 ## Lancer en local

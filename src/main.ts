@@ -37,7 +37,6 @@ import {
 } from './profile';
 import { winPercent } from './winprob';
 import { explainMove } from './explain';
-import { getApiKey, rephrase, setApiKey } from './llm';
 import { loadBook, openingName } from './openings';
 import { fetchChessCom, fetchLichess } from './import';
 
@@ -370,32 +369,13 @@ function renderReview(node: TreeNode) {
     (showBest ? ` · meilleur coup : ${best}` : '');
   box.append(title, detail);
 
-  // Explication : faits vérifiés (couche 1), puis reformulation par Claude (couche 2, optionnelle).
+  // Explication : faits vérifiés par le moteur et les règles.
   const facts = explainMove(node);
   if (!facts.length) return;
   const ul = document.createElement('ul');
   ul.className = 'facts';
   for (const f of facts) ul.append(Object.assign(document.createElement('li'), { textContent: f }));
   box.append(ul);
-  if (!getApiKey()) return;
-  const out = document.createElement('p');
-  out.className = 'llm';
-  const btn = document.createElement('button');
-  btn.className = 'llm-btn';
-  btn.textContent = 'Expliquer avec Claude';
-  btn.onclick = async () => {
-    btn.disabled = true;
-    btn.textContent = 'Claude réfléchit…';
-    try {
-      out.textContent = await rephrase(node.move!.san, LABELS[r.classification].name, facts);
-      btn.remove();
-    } catch (e) {
-      out.textContent = `Explication indisponible : ${(e as Error).message}.`;
-      btn.disabled = false;
-      btn.textContent = 'Réessayer';
-    }
-  };
-  box.append(btn, out);
 }
 
 function renderGraph() {
@@ -1082,22 +1062,6 @@ $('key-prev').onclick = () => jumpKeyMoment(-1);
 $('key-next').onclick = () => jumpKeyMoment(1);
 $('online-search').onclick = searchOnline;
 $('online-user').addEventListener('keydown', (e) => e.key === 'Enter' && searchOnline());
-
-// Clé API Claude (optionnelle), gardée dans ce navigateur uniquement.
-const keyInput = $<HTMLInputElement>('api-key');
-const keyStatus = () => ($('api-key-status').textContent = getApiKey() ? 'Clé enregistrée.' : 'Aucune clé.');
-keyStatus();
-$('api-key-save').onclick = () => {
-  setApiKey(keyInput.value.trim());
-  keyInput.value = '';
-  keyStatus();
-  if (current) renderReview(current);
-};
-$('api-key-clear').onclick = () => {
-  setApiKey('');
-  keyStatus();
-  if (current) renderReview(current);
-};
 
 document.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;

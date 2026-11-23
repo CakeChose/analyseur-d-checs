@@ -500,28 +500,6 @@ select {
 .facts li {
   margin: 2px 0;
 }
-.llm-btn {
-  margin-top: 6px;
-  font-size: 13px;
-}
-.llm {
-  margin: 6px 0 0;
-  font-size: 14px;
-  font-style: italic;
-}
-.llm:empty {
-  display: none;
-}
-#api-key {
-  width: 100%;
-  box-sizing: border-box;
-  margin: 4px 0 6px;
-  padding: 5px;
-  background: var(--panel);
-  color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-}
 .review.puzzle {
   --c: var(--accent);
 }
