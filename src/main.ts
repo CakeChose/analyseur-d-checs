@@ -25,6 +25,8 @@ import { cacheGet, cachePut } from './cache';
 import { winPercent } from './winprob';
 import { explainMove } from './explain';
 import { getApiKey, rephrase, setApiKey } from './llm';
+import { loadBook, openingName } from './openings';
+import { fetchChessCom, fetchLichess } from './import';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -63,6 +65,7 @@ function legalDests(fen: string): Map<Key, Key[]> {
 /** L'utilisateur joue un coup sur l'échiquier : on l'ajoute à l'arbre (variante). */
 function onUserMove(orig: Key, dest: Key) {
   if (!current) return;
+  if (puzzle) return puzzleMove(orig, dest);
   const piece = new Chess(current.fen).get(orig as Square);
   const promoting = piece?.type === 'p' && (dest[1] === '8' || dest[1] === '1');
   const node = playMove(current, orig, dest, promoting ? 'q' : undefined);
@@ -133,6 +136,13 @@ function clearEngine() {
 }
 
 function updateEngine(node: TreeNode) {
+  if (puzzle) {
+    // Pas d'aide du moteur pendant un exercice : ça donnerait la réponse.
+    clearEngine();
+    $('engine-status').textContent = 'masqué pendant l’exercice';
+    setEvalBar(null);
+    return;
+  }
   if (!$<HTMLInputElement>('engine-on').checked) {
     if (!analysing) engine.stop();
     clearEngine();
@@ -180,6 +190,7 @@ async function analyseLive(node: TreeNode) {
   if (!ev || current !== node) return;
   if (needsReview && parent.eval) {
     node.review = reviewMove(node.move!, parent.eval, ev, parent.review);
+    if (isBookNode(node)) node.review.classification = 'book';
     renderMoves();
     renderReview(node);
   }
@@ -306,6 +317,7 @@ const VERDICT: Record<Classification, string> = {
 };
 
 function renderReview(node: TreeNode) {
+  if (puzzle) return renderPuzzle();
   const box = $('review');
   const r = node.review;
   if (!r || !node.move || !node.parent) {
@@ -403,9 +415,18 @@ function renderReport() {
       <thead><tr><th>${esc(h.White ?? 'Blancs')}</th><th></th><th>${esc(h.Black ?? 'Noirs')}</th></tr></thead>
       <tbody>
         <tr class="accuracy"><td>${analysis.accuracy.white.toFixed(1)}</td><td>Précision</td><td>${analysis.accuracy.black.toFixed(1)}</td></tr>
+        <tr title="Ordre de grandeur seulement, déduit de la précision sur cette seule partie"><td>~${estimateElo(analysis.accuracy.white)}</td><td>Elo estimé <span class="muted">(très approximatif)</span></td><td>~${estimateElo(analysis.accuracy.black)}</td></tr>
         ${rows}
       </tbody>
-    </table>`;
+    </table>
+    <div class="retry">
+      Réessayer les erreurs des
+      <button id="retry-w">Blancs</button>
+      <button id="retry-b">Noirs</button>
+    </div>
+    <p id="report-msg" class="muted"></p>`;
+  $('retry-w').onclick = () => startPuzzles('w');
+  $('retry-b').onclick = () => startPuzzles('b');
 }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
@@ -422,7 +443,10 @@ function applyAnalysis(positions: PositionEval[], moves: MoveReview[], depth: nu
     nodes[i].eval = p;
     nodes[i].evalDepth = depth;
   });
-  moves.forEach((m, i) => (nodes[i + 1].review = m));
+  moves.forEach((m, i) => {
+    nodes[i + 1].review = m;
+    if (isBookNode(nodes[i + 1])) m.classification = 'book';
+  });
   analysis = {
     depth,
     positions,
@@ -448,6 +472,7 @@ async function runAnalysis() {
   $<HTMLButtonElement>('analyse').disabled = true;
   engine.stop();
   clearEngine();
+  await loadBook();
 
   let result: GameAnalysis | null;
   const cached = await cacheGet<PositionEval[]>(key);
@@ -482,6 +507,185 @@ async function runAnalysis() {
 }
 
 // ---------------------------------------------------------------------------
+// Bonus : livre d'ouvertures, moments clés, Elo, mode « Réessayer »
+// ---------------------------------------------------------------------------
+
+/** Coup de livre : la position et toutes celles d'avant sont dans la base d'ouvertures. */
+function isBookNode(node: TreeNode): boolean {
+  for (let n: TreeNode | undefined = node; n?.parent; n = n.parent) {
+    if (!openingName(n.fen)) return false;
+  }
+  return !!node.parent;
+}
+
+/** Nom de l'ouverture jouée : la dernière position de la partie trouvée dans la base. */
+function showOpening() {
+  if (!root) return;
+  let name: string | undefined;
+  for (const n of mainline(root)) name = openingName(n.fen) ?? name;
+  $('opening').textContent = name ?? '';
+}
+
+const KEY_MOMENTS: Classification[] = ['brilliant', 'great', 'miss', 'mistake', 'blunder'];
+
+function jumpKeyMoment(dir: 1 | -1) {
+  if (!root || !current) return;
+  let from = current;
+  while (!from.mainline && from.parent) from = from.parent;
+  const keys = mainline(root).filter((n) => n.review && KEY_MOMENTS.includes(n.review.classification));
+  const target = dir === 1 ? keys.find((n) => n.ply > from.ply) : keys.reverse().find((n) => n.ply < from.ply);
+  if (target) show(target);
+}
+
+/**
+ * Estimation (très approximative) du niveau à partir de la précision :
+ * interpolation sur des repères grossiers, à prendre comme un ordre de grandeur.
+ */
+function estimateElo(accuracy: number): number {
+  const pts: [number, number][] = [
+    [40, 400],
+    [60, 800],
+    [70, 1100],
+    [80, 1500],
+    [85, 1800],
+    [90, 2100],
+    [95, 2500],
+    [98, 2800],
+  ];
+  if (accuracy <= pts[0][0]) return pts[0][1];
+  for (let i = 1; i < pts.length; i++) {
+    const [a0, e0] = pts[i - 1];
+    const [a1, e1] = pts[i];
+    if (accuracy <= a1) return Math.round((e0 + ((accuracy - a0) / (a1 - a0)) * (e1 - e0)) / 50) * 50;
+  }
+  return pts.at(-1)![1];
+}
+
+/** Exercice en cours : retrouver un meilleur coup là où le joueur s'est trompé. */
+let puzzle: { queue: TreeNode[]; index: number; state: 'try' | 'wrong' | 'solved' | 'shown'; tried?: string } | null =
+  null;
+
+const BAD: Classification[] = ['inaccuracy', 'mistake', 'miss', 'blunder'];
+
+function startPuzzles(color: 'w' | 'b') {
+  if (!root) return;
+  const queue = mainline(root).filter(
+    (n) => n.move?.color === color && n.review && BAD.includes(n.review.classification) && n.parent?.eval?.lines[0],
+  );
+  if (!queue.length) {
+    $('report-msg').textContent = 'Aucune erreur à retravailler pour ce camp.';
+    return;
+  }
+  puzzle = { queue, index: 0, state: 'try' };
+  if (board.state.orientation !== (color === 'w' ? 'white' : 'black')) $('flip').click();
+  show(queue[0].parent!);
+}
+
+/** Les coups acceptés : le meilleur, et ceux presque aussi bons selon le moteur. */
+function goodAnswers(position: TreeNode): string[] {
+  const lines = position.eval?.lines ?? [];
+  if (!lines[0]) return [];
+  const white = position.ply % 2 === 0;
+  const pov = (w: number) => (white ? w : 100 - w);
+  const best = pov(winPercent(lines[0]));
+  return lines.filter((l) => best - pov(winPercent(l)) < 2).map((l) => l.pv[0]);
+}
+
+function puzzleMove(orig: Key, dest: Key) {
+  if (!puzzle || !current) return;
+  const target = puzzle.queue[puzzle.index];
+  const chess = new Chess(current.fen);
+  const piece = chess.get(orig as Square);
+  const promo = piece?.type === 'p' && (dest[1] === '8' || dest[1] === '1') ? 'q' : '';
+  const san = chess.move({ from: orig, to: dest, promotion: promo || undefined }).san;
+  const ok = goodAnswers(target.parent!).includes(orig + dest + promo);
+  puzzle.state = ok ? 'solved' : 'wrong';
+  puzzle.tried = san;
+  renderPuzzle();
+  if (!ok) setTimeout(() => puzzle && show(target.parent!), 700);
+  else board.set({ movable: { color: undefined } });
+}
+
+function renderPuzzle() {
+  if (!puzzle) return;
+  const box = $('review');
+  const target = puzzle.queue[puzzle.index];
+  const position = target.parent!;
+  const bestUci = position.eval!.lines[0].pv[0];
+  const bestSan = uciToSan(position.fen, [bestUci])[0];
+  box.hidden = false;
+  box.className = 'review puzzle';
+  const n = `${puzzle.index + 1}/${puzzle.queue.length}`;
+  const side = target.move!.color === 'w' ? 'les Blancs' : 'les Noirs';
+  const msg = {
+    try: `Exercice ${n} — Dans la partie, ${side} ont joué ${target.move!.san} (${LABELS[target.review!.classification].name.toLowerCase()}). Trouve mieux !`,
+    wrong: `${puzzle.tried} n'est pas le bon coup. Réessaie.`,
+    solved: `Bravo ! ${puzzle.tried} était ${puzzle.tried === bestSan ? 'le meilleur coup' : 'un très bon coup'}.`,
+    shown: `La solution était ${bestSan} (flèche verte).`,
+  }[puzzle.state];
+  box.innerHTML = '';
+  box.append(Object.assign(document.createElement('div'), { className: 'review-title', textContent: msg }));
+  const bar = document.createElement('div');
+  bar.className = 'puzzle-bar';
+  const button = (label: string, fn: () => void) => {
+    const b = Object.assign(document.createElement('button'), { textContent: label });
+    b.onclick = fn;
+    bar.append(b);
+  };
+  if (puzzle.state === 'try' || puzzle.state === 'wrong') {
+    button('Solution', () => {
+      puzzle!.state = 'shown';
+      board.setAutoShapes([{ orig: bestUci.slice(0, 2) as Key, dest: bestUci.slice(2, 4) as Key, brush: 'green' }]);
+      renderPuzzle();
+    });
+  }
+  if (puzzle.index + 1 < puzzle.queue.length) {
+    button('Suivant', () => {
+      puzzle!.index++;
+      puzzle!.state = 'try';
+      show(puzzle!.queue[puzzle!.index].parent!);
+    });
+  }
+  button('Arrêter', () => {
+    puzzle = null;
+    show(target);
+  });
+  box.append(bar);
+}
+
+// ---------------------------------------------------------------------------
+// Import depuis chess.com / Lichess
+// ---------------------------------------------------------------------------
+
+async function searchOnline() {
+  const user = $<HTMLInputElement>('online-user').value.trim();
+  const site = $<HTMLSelectElement>('online-site').value;
+  const list = $('online-games');
+  const status = $('online-status');
+  if (!user) return;
+  list.innerHTML = '';
+  status.textContent = 'Recherche…';
+  try {
+    const games = site === 'lichess' ? await fetchLichess(user) : await fetchChessCom(user);
+    status.textContent = games.length ? `${games.length} dernières parties :` : 'Aucune partie trouvée.';
+    for (const g of games) {
+      const li = document.createElement('li');
+      const b = document.createElement('button');
+      b.className = 'online-game';
+      b.textContent = `${g.white} – ${g.black}  ${g.result}  ·  ${g.speed}  ·  ${g.date.toLocaleDateString('fr-FR')}`;
+      b.onclick = () => {
+        $<HTMLTextAreaElement>('pgn').value = g.pgn;
+        load(g.pgn);
+      };
+      li.append(b);
+      list.append(li);
+    }
+  } catch (e) {
+    status.textContent = `Impossible de récupérer les parties : ${(e as Error).message}.`;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Chargement et navigation
 // ---------------------------------------------------------------------------
 
@@ -503,6 +707,9 @@ function load(pgn: string) {
   game = g;
   root = buildTree(g);
   analysis = null;
+  puzzle = null;
+  $('opening').textContent = '';
+  loadBook().then(showOpening);
   const h = g.headers;
   $('game-info').textContent = h.White ? `${h.White} – ${h.Black}${h.Result ? ` (${h.Result})` : ''}` : '';
   renderReport();
@@ -538,6 +745,10 @@ $('flip').onclick = () => {
   $('evalbar').classList.toggle('flipped', board.state.orientation === 'black');
 };
 $('engine-on').onchange = () => current && updateEngine(current);
+$('key-prev').onclick = () => jumpKeyMoment(-1);
+$('key-next').onclick = () => jumpKeyMoment(1);
+$('online-search').onclick = searchOnline;
+$('online-user').addEventListener('keydown', (e) => e.key === 'Enter' && searchOnline());
 
 // Clé API Claude (optionnelle), gardée dans ce navigateur uniquement.
 const keyInput = $<HTMLInputElement>('api-key');

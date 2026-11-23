@@ -349,6 +349,46 @@ select {
   border: 1px solid var(--border);
   border-radius: 4px;
 }
+.review.puzzle {
+  --c: var(--accent);
+}
+.puzzle-bar,
+.retry {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  font-size: 14px;
+}
+.online-form {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+.online-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.online-games {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 260px;
+  overflow-y: auto;
+}
+.online-game {
+  width: 100%;
+  text-align: left;
+  font-size: 13px;
+  margin: 2px 0;
+  padding: 4px 8px;
+}
 .review-title {
   font-weight: 700;
   color: var(--c);

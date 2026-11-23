@@ -21,6 +21,8 @@
           <button id="next" title="Coup suivant (→)">▶</button>
           <button id="last" title="Fin">⏭</button>
           <button id="flip" title="Retourner l'échiquier">⇅</button>
+          <button id="key-prev" title="Moment clé précédent (erreur, gaffe, coup brillant…)">‹ Clé</button>
+          <button id="key-next" title="Moment clé suivant (erreur, gaffe, coup brillant…)">Clé ›</button>
         </div>
         <p class="hint muted">
           Joue un coup sur l'échiquier pour essayer une variante · ↑ pour revenir à la partie
@@ -28,7 +30,10 @@
         <div id="graph" class="graph"></div>
       </section>
       <section class="side-col">
-        <div id="game-info" class="game-info"></div>
+        <div>
+          <div id="game-info" class="game-info"></div>
+          <div id="opening" class="muted"></div>
+        </div>
         <div class="analyse-bar">
           <button id="analyse" class="primary">Analyser la partie</button>
           <label class="muted"
@@ -51,6 +56,19 @@
           <ol id="engine-lines" class="engine-lines"></ol>
         </div>
         <div id="moves" class="moves"></div>
+        <details class="import">
+          <summary>Mes parties chess.com / Lichess</summary>
+          <div class="online-form">
+            <select id="online-site">
+              <option value="chesscom">chess.com</option>
+              <option value="lichess">Lichess</option>
+            </select>
+            <input id="online-user" type="text" placeholder="Pseudo" autocomplete="off" />
+            <button id="online-search">Chercher</button>
+          </div>
+          <p id="online-status" class="muted"></p>
+          <ul id="online-games" class="online-games"></ul>
+        </details>
         <details class="import">
           <summary>Importer une partie (PGN)</summary>
           <textarea id="pgn" rows="8" placeholder="Colle ici le PGN de ta partie"></textarea>
