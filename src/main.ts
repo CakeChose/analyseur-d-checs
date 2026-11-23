@@ -88,10 +88,25 @@ function show(node: TreeNode) {
   document.querySelectorAll('.moves .move').forEach((el) => {
     el.classList.toggle('current', Number((el as HTMLElement).dataset.id) === node.id);
   });
-  document.querySelector('.moves .current')?.scrollIntoView({ block: 'nearest' });
+  scrollMoveIntoView();
   renderReview(node);
   renderGraph();
   updateEngine(node);
+}
+
+/**
+ * Fait défiler la liste des coups (et elle seule, pas la page) pour montrer
+ * le coup courant : l'échiquier reste à l'écran.
+ */
+function scrollMoveIntoView() {
+  const list = $('moves');
+  const el = list.querySelector<HTMLElement>('.current');
+  if (!el) return;
+  const top = el.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+  if (top < list.scrollTop) list.scrollTop = top - 8;
+  else if (top + el.offsetHeight > list.scrollTop + list.clientHeight) {
+    list.scrollTop = top + el.offsetHeight - list.clientHeight + 8;
+  }
 }
 
 function setEvalBar(ev: PositionEval | null) {
@@ -415,7 +430,7 @@ function renderReport() {
       <thead><tr><th>${esc(h.White ?? 'Blancs')}</th><th></th><th>${esc(h.Black ?? 'Noirs')}</th></tr></thead>
       <tbody>
         <tr class="accuracy"><td>${analysis.accuracy.white.toFixed(1)}</td><td>Précision</td><td>${analysis.accuracy.black.toFixed(1)}</td></tr>
-        <tr title="Ordre de grandeur seulement, déduit de la précision sur cette seule partie"><td>~${estimateElo(analysis.accuracy.white)}</td><td>Elo estimé <span class="muted">(très approximatif)</span></td><td>~${estimateElo(analysis.accuracy.black)}</td></tr>
+        <tr title="Ordre de grandeur seulement, déduit de la précision sur cette seule partie"><td>~${estimateElo(analysis.accuracy.white)}</td><td>Elo estimé</td><td>~${estimateElo(analysis.accuracy.black)}</td></tr>
         ${rows}
       </tbody>
     </table>

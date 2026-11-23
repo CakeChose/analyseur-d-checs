@@ -7,29 +7,8 @@
   </head>
   <body>
     <main class="app">
-      <section class="board-col">
-        <div class="board-row">
-          <div id="evalbar" class="evalbar" title="Évaluation">
-            <div id="evalbar-fill" class="evalbar-fill"></div>
-            <span id="evalbar-text" class="evalbar-text"></span>
-          </div>
-          <div id="board" class="board"></div>
-        </div>
-        <div class="nav">
-          <button id="first" title="Début (Origine)">⏮</button>
-          <button id="prev" title="Coup précédent (←)">◀</button>
-          <button id="next" title="Coup suivant (→)">▶</button>
-          <button id="last" title="Fin">⏭</button>
-          <button id="flip" title="Retourner l'échiquier">⇅</button>
-          <button id="key-prev" title="Moment clé précédent (erreur, gaffe, coup brillant…)">‹ Clé</button>
-          <button id="key-next" title="Moment clé suivant (erreur, gaffe, coup brillant…)">Clé ›</button>
-        </div>
-        <p class="hint muted">
-          Joue un coup sur l'échiquier pour essayer une variante · ↑ pour revenir à la partie
-        </p>
-        <div id="graph" class="graph"></div>
-      </section>
-      <section class="side-col">
+      <!-- Colonne de gauche : la partie, l'analyse, le bilan, l'import -->
+      <section class="game-col">
         <div>
           <div id="game-info" class="game-info"></div>
           <div id="opening" class="muted"></div>
@@ -47,16 +26,7 @@
         </div>
         <div id="progress" class="progress" hidden><div id="progress-fill"></div></div>
         <div id="report" class="report" hidden></div>
-        <div id="review" class="review" hidden></div>
-        <div class="engine">
-          <label class="engine-head">
-            <input type="checkbox" id="engine-on" checked />
-            Stockfish 19 <span id="engine-status" class="muted"></span>
-          </label>
-          <ol id="engine-lines" class="engine-lines"></ol>
-        </div>
-        <div id="moves" class="moves"></div>
-        <details class="import">
+        <details class="import" open>
           <summary>Mes parties chess.com / Lichess</summary>
           <div class="online-form">
             <select id="online-site">
@@ -87,6 +57,43 @@
           <button id="api-key-clear">Effacer</button>
           <p id="api-key-status" class="muted"></p>
         </details>
+      </section>
+
+      <!-- Colonne centrale : l'échiquier -->
+      <section class="board-col">
+        <div class="board-row">
+          <div id="evalbar" class="evalbar" title="Évaluation">
+            <div id="evalbar-fill" class="evalbar-fill"></div>
+            <span id="evalbar-text" class="evalbar-text"></span>
+          </div>
+          <div id="board" class="board"></div>
+        </div>
+        <div class="nav">
+          <button id="first" title="Début (Origine)">⏮</button>
+          <button id="prev" title="Coup précédent (←)">◀</button>
+          <button id="next" title="Coup suivant (→)">▶</button>
+          <button id="last" title="Fin">⏭</button>
+          <button id="flip" title="Retourner l'échiquier">⇅</button>
+          <button id="key-prev" title="Moment clé précédent (erreur, gaffe, coup brillant…)">‹ Clé</button>
+          <button id="key-next" title="Moment clé suivant (erreur, gaffe, coup brillant…)">Clé ›</button>
+        </div>
+        <p class="hint muted">
+          Joue un coup sur l'échiquier pour essayer une variante · ↑ pour revenir à la partie
+        </p>
+        <div id="graph" class="graph"></div>
+      </section>
+
+      <!-- Colonne de droite : le coup, le moteur, la liste des coups -->
+      <section class="side-col">
+        <div id="review" class="review" hidden></div>
+        <div class="engine">
+          <label class="engine-head">
+            <input type="checkbox" id="engine-on" checked />
+            Stockfish 19 <span id="engine-status" class="muted"></span>
+          </label>
+          <ol id="engine-lines" class="engine-lines"></ol>
+        </div>
+        <div id="moves" class="moves"></div>
       </section>
     </main>
     <script type="module" src="/src/main.ts"></script>

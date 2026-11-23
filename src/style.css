@@ -25,18 +25,64 @@ body {
   background: var(--bg);
 }
 
+/*
+ * Trois colonnes sur grand écran : partie | échiquier | coups.
+ * L'échiquier prend toute la hauteur disponible (sans dépasser la largeur restante).
+ */
 .app {
-  display: flex;
+  --side: clamp(300px, 22vw, 420px);
+  --board: clamp(320px, min(100vh - 250px, 100vw - 2 * var(--side) - 140px), 960px);
+  display: grid;
+  grid-template-columns: var(--side) auto var(--side);
+  grid-template-areas: 'game board side';
   gap: 24px;
   padding: 24px;
   justify-content: center;
-  align-items: flex-start;
-  flex-wrap: wrap;
+  align-items: start;
+}
+.game-col {
+  grid-area: game;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.board-col {
+  grid-area: board;
+}
+.side-col {
+  grid-area: side;
+  /* Même hauteur que l'échiquier et ses boutons : la liste des coups défile à l'intérieur. */
+  height: calc(var(--board) + 60px);
+}
+
+/* Écran moyen : échiquier + coups, la colonne « partie » passe dessous. */
+@media (max-width: 1150px) {
+  .app {
+    --side: clamp(300px, 34vw, 420px);
+    --board: clamp(300px, min(100vh - 230px, 100vw - var(--side) - 120px), 900px);
+    grid-template-columns: auto var(--side);
+    grid-template-areas: 'board side' 'game game';
+  }
+}
+/* Téléphone : une seule colonne. */
+@media (max-width: 760px) {
+  .app {
+    --board: calc(100vw - 72px);
+    grid-template-columns: 1fr;
+    grid-template-areas: 'board' 'side' 'game';
+    padding: 12px;
+  }
+  .side-col {
+    height: auto;
+  }
+  .moves {
+    max-height: 320px;
+  }
 }
 
 .board {
-  width: min(560px, 90vw);
-  height: min(560px, 90vw);
+  width: var(--board);
+  height: var(--board);
 }
 
 .board-row {
@@ -143,7 +189,6 @@ button:hover {
 }
 
 .side-col {
-  width: min(360px, 90vw);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -154,8 +199,9 @@ button:hover {
 }
 
 .moves {
+  flex: 1;
+  min-height: 160px;
   padding: 6px 8px;
-  max-height: 320px;
   overflow-y: auto;
   background: var(--panel);
   border: 1px solid var(--border);
@@ -422,7 +468,7 @@ select {
 
 .graph {
   margin-top: 12px;
-  width: calc(min(560px, 90vw) + 32px);
+  width: calc(var(--board) + 32px);
 }
 .graph-svg {
   display: block;
