@@ -1,0 +1,3 @@
+# Données brutes (base d'ouvertures) et réglages locaux : pas utiles dans le graphe
+src/data/
+.claude/
