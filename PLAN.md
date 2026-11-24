@@ -333,8 +333,12 @@ On construit d'abord le **squelette** (10.1 à 10.4), puis les **pages d'apprent
   Données : un second fichier généré par `scripts/build-openings.mjs` (code, nom, coups ; ~250 Ko),
   chargé seulement à l'ouverture du catalogue. Limites : pas de popularité ni de taux de réussite
   mondiaux, noms en anglais.
-- **Problèmes** (depuis la carte « erreurs ») : exercices tirés de tes erreurs, par type
-  (pièce en prise, fourchette, mat manqué…), avec suivi de réussite.
+- **Problèmes** : exercices tirés de tes erreurs, par type (pièce en prise, fourchette, mat manqué…)
+  ou **au hasard** (erreurs, ratés et gaffes, pas les imprécisions ; sans dire le coup joué ni le type
+  d'erreur : il faut trouver le meilleur coup). Score : réussis, ratés, série en cours, meilleure série.
+  Chaque problème a un état : jamais essayé (gris), raté (rouge), réussi 1 fois (vert pâle),
+  2 fois de suite (vert), 3 fois de suite = validé (vert foncé), plus proposé. Seul le premier essai compte.
+- Victoires / nulles / défaites en vert / gris / rouge partout où elles apparaissent.
 - D'autres pages pourront suivre le même modèle (finales, gestion du temps…).
 
 ### Risques de la phase 10

@@ -624,6 +624,8 @@ let puzzle: {
   view: View;
   /** Résultat déjà compté pour cet exercice (seul le premier essai compte). */
   recorded?: boolean;
+  /** Problèmes aléatoires : on ne dit ni le coup joué ni le type d'erreur. */
+  blind?: boolean;
 } | null = null;
 
 const BAD: Classification[] = ['inaccuracy', 'mistake', 'miss', 'blunder'];
@@ -646,9 +648,9 @@ async function showPuzzle() {
   show(target.parent!);
 }
 
-function startPuzzleQueue(queue: { id: string; ply: number }[], view: View = 'partie') {
+function startPuzzleQueue(queue: { id: string; ply: number }[], view: View = 'partie', blind = false) {
   if (!queue.length) return false;
-  puzzle = { queue, index: 0, state: 'try', view };
+  puzzle = { queue, index: 0, state: 'try', view, blind };
   showView(view);
   showPuzzle();
   return true;
@@ -705,7 +707,9 @@ function renderPuzzle() {
   const n = `${puzzle.index + 1}/${puzzle.queue.length}`;
   const side = target.move!.color === 'w' ? 'les Blancs' : 'les Noirs';
   const msg = {
-    try: `Exercice ${n} — Dans la partie, ${side} ont joué ${target.move!.san} (${LABELS[target.review!.classification].name.toLowerCase()}). Trouve mieux !`,
+    try: puzzle.blind
+      ? `Problème ${n} — Les ${side.slice(4)} jouent : trouve le meilleur coup.`
+      : `Exercice ${n} — Dans la partie, ${side} ont joué ${target.move!.san} (${LABELS[target.review!.classification].name.toLowerCase()}). Trouve mieux !`,
     wrong: `${puzzle.tried} n'est pas le bon coup. Réessaie.`,
     solved: `Bravo ! ${puzzle.tried} était ${puzzle.tried === bestSan ? 'le meilleur coup' : 'un très bon coup'}.`,
     shown: `La solution était ${bestSan} (flèche verte).`,
@@ -768,7 +772,7 @@ async function searchOnline() {
       const li = document.createElement('li');
       const b = document.createElement('button');
       b.className = 'online-game';
-      b.textContent = `${g.white} – ${g.black}  ${g.result}  ·  ${g.speed}  ·  ${g.date.toLocaleDateString('fr-FR')}`;
+      b.innerHTML = `${esc(g.white)} – ${esc(g.black)} &nbsp;${resultBadge(g.result, g.white, g.black, user)} &nbsp;·&nbsp; ${esc(g.speed)} &nbsp;·&nbsp; ${g.date.toLocaleDateString('fr-FR')}`;
       b.onclick = () => {
         $<HTMLTextAreaElement>('pgn').value = g.pgn;
         load(g.pgn, user);
@@ -975,6 +979,25 @@ async function loadChessStats(user: string) {
   return stats;
 }
 
+/** « 30 V · 2 N · 3 D » en vert / gris / rouge. */
+const vnd = (win: number, draw: number, loss: number, sep = ' · ', bare = false) =>
+  [
+    ['win', win, 'V'],
+    ['draw', draw, 'N'],
+    ['loss', loss, 'D'],
+  ]
+    .map(([c, n, l]) => `<span class="t-${c}">${(n as number).toLocaleString('fr-FR')}${bare ? '' : ` ${l}`}</span>`)
+    .join(sep);
+
+/** Résultat d'une partie (« 1-0 », « ½-½ »…) coloré du point de vue de `who` (sinon neutre). */
+function resultBadge(result: string, white: string, black: string, who: string): string {
+  const w = who.toLowerCase();
+  const side = white.toLowerCase() === w ? 'w' : black.toLowerCase() === w ? 'b' : '';
+  const draw = result.startsWith('½') || result === '1/2-1/2';
+  const res = !side ? '' : draw ? 'draw' : (result === '1-0') === (side === 'w') ? 'win' : 'loss';
+  return `<span class="${res ? `t-${res}` : ''}">${esc(result)}</span>`;
+}
+
 const fact = (label: string, value: string, title = '') =>
   `<div class="fact" ${title ? `title="${title}"` : ''}><div class="muted">${label}</div><div class="fact-v">${value}</div></div>`;
 
@@ -1015,7 +1038,7 @@ function opponentCard(list: OnlineGame[]): string {
       ${fact('Victoire contre le plus fort', best ? link(best) : '—', "Ta victoire contre l'adversaire qui avait l'Elo le plus élevé")}
       ${fact('Elo moyen des adversaires', String(avg))}
       ${fact('Performance', String(perf), 'Estimation : Elo moyen des adversaires + 400 × (victoires − défaites) / parties')}
-      ${fact('Série en cours', `${streak} ${streakLabel}${streak > 1 ? 's' : ''}`)}
+      ${fact('Série en cours', `<span class="t-${rows[0].res}">${streak} ${streakLabel}${streak > 1 ? 's' : ''}</span>`)}
       ${fact('Plus longue série de victoires', String(longest))}
       ${fact('Score avec les Blancs', scoreOf(true))}
       ${fact('Score avec les Noirs', scoreOf(false))}
@@ -1060,7 +1083,7 @@ function speedsCard(): string {
     const n = s.win + s.loss + s.draw;
     const best = s.best ? `${s.best}${s.bestDate ? ` <span class="muted">${new Date(s.bestDate).toLocaleDateString('fr-FR')}</span>` : ''}` : '—';
     return `<tr class="${sp === profileSpeed ? 'current' : ''}"><td>${SPEEDS[sp]}</td><td>${s.rating ?? '—'}</td><td>${best}</td>
-      <td>${n.toLocaleString('fr-FR')}</td><td>${[s.win, s.draw, s.loss].map((x) => x.toLocaleString('fr-FR')).join(' / ')}</td><td>${n ? pct((100 * (s.win + s.draw / 2)) / n) : '—'}</td></tr>`;
+      <td>${n.toLocaleString('fr-FR')}</td><td>${vnd(s.win, s.draw, s.loss, ' / ', true)}</td><td>${n ? pct((100 * (s.win + s.draw / 2)) / n) : '—'}</td></tr>`;
   });
   if (!rows.length) return '';
   return `<section class="card"><h2>Toutes les cadences</h2>
@@ -1139,7 +1162,7 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[], l
     <div class="kpis">
       ${kpi('Précision', n ? s.accuracy.all.toFixed(1) : '—', n ? `Blancs ${byColor('w')} · Noirs ${byColor('b')}` : 'aucune partie analysée')}
       ${kpi('Elo', elos.length ? String(elos.at(-1)) : '—', elos.length >= 2 ? `${eloDiff >= 0 ? '+' : ''}${eloDiff} sur ${elos.length} parties` : '')}
-      ${kpi('Bilan', list.length ? pct((100 * (rec.win + rec.draw / 2)) / list.length) : '—', `${rec.win} V · ${rec.draw} N · ${rec.loss} D`)}
+      ${kpi('Bilan', list.length ? pct((100 * (rec.win + rec.draw / 2)) / list.length) : '—', vnd(rec.win, rec.draw, rec.loss))}
       ${kpi('Gaffes par partie', n ? (blunders / n).toFixed(1) : '—', `${n} partie${n > 1 ? 's' : ''} analysée${n > 1 ? 's' : ''} sur ${list.length}`)}
     </div>
     <div class="chart-row">
@@ -1167,6 +1190,7 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[], l
   // Droite : ce qu'on peut travailler (cartes cliquables).
   profileExamples = [];
   profileCauses = s.causes;
+  profileMistakes = s.games.flatMap((g) => g.mistakes);
   const example = (m: MistakeRecord) => {
     profileExamples.push(m);
     const what = m.san ? `coup ${Math.ceil(m.ply / 2)} : ${esc(m.san)}` : `position gagnante au coup ${Math.ceil(m.ply / 2)}`;
@@ -1243,10 +1267,7 @@ $('view-profil').addEventListener('click', async (e) => {
   if (train) return openProblems(Number(train.dataset.train));
   const goto = t.closest<HTMLElement>('[data-goto]');
   if (goto?.dataset.goto === 'ouvertures') return openOpenings();
-  if (goto?.dataset.goto === 'problemes') {
-    const first = profileCauses.findIndex((c) => c.tag !== 'gache' && c.tag !== 'position');
-    return openProblems(first >= 0 ? first : profileCauses.findIndex((c) => c.tag !== 'gache'));
-  }
+  if (goto?.dataset.goto === 'problemes') return openRandomProblems();
 });
 
 async function runProfile() {
@@ -1321,68 +1342,172 @@ async function importFile(file: File) {
 }
 
 // ---------------------------------------------------------------------------
-// Page Problèmes : exercices tirés de tes erreurs, par type, avec suivi de réussite
+// Page Problèmes : exercices tirés de tes erreurs, par type ou au hasard, avec suivi de réussite
 // ---------------------------------------------------------------------------
 
-/** Résultats des exercices (« partie#demi-coup » → réussites / échecs), gardés dans le navigateur. */
-type ExoStats = Record<string, { ok: number; ko: number }>;
+/**
+ * Suivi de chaque problème (« partie#demi-coup ») : réussites, ratés, et réussites d'affilée
+ * (`run`, remis à zéro par un raté). Gardé dans le navigateur.
+ */
+type ExoStats = Record<string, { ok: number; ko: number; run?: number }>;
+/** Score global : réussis, ratés, série en cours, meilleure série. */
+type ExoScore = { ok: number; ko: number; streak: number; best: number };
 const exoKey = () => `exos:${profileName.toLowerCase()}`;
+const scoreKey = () => `exos-score:${profileName.toLowerCase()}`;
 
-function exoStats(): ExoStats {
+function readJson<T>(key: string, fallback: T): T {
   try {
-    return JSON.parse(localStorage.getItem(exoKey()) ?? '{}');
+    return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback;
   } catch {
-    return {};
+    return fallback;
   }
 }
-
-function recordExo(id: string, ply: number, ok: boolean) {
-  const s = exoStats();
-  const e = (s[`${id}#${ply}`] ??= { ok: 0, ko: 0 });
-  if (ok) e.ok++;
-  else e.ko++;
+function writeJson(key: string, value: unknown) {
   try {
-    localStorage.setItem(exoKey(), JSON.stringify(s));
+    localStorage.setItem(key, JSON.stringify(value));
   } catch {
     /* stockage indisponible : le suivi ne sera pas gardé */
   }
 }
+const exoStats = () => readJson<ExoStats>(exoKey(), {});
+const exoScore = () => readJson<ExoScore>(scoreKey(), { ok: 0, ko: 0, streak: 0, best: 0 });
 
-/** Cause d'erreur travaillée sur la page Problèmes (index dans profileCauses). */
+/** Seul le premier essai d'un problème compte (voir puzzleMove). */
+function recordExo(id: string, ply: number, ok: boolean) {
+  const s = exoStats();
+  const e = (s[`${id}#${ply}`] ??= { ok: 0, ko: 0, run: 0 });
+  // Anciennes entrées sans `run` : on le déduit (que des réussites → autant d'affilée).
+  e.run ??= e.ko ? 0 : e.ok;
+  if (ok) {
+    e.ok++;
+    e.run++;
+  } else {
+    e.ko++;
+    e.run = 0;
+  }
+  writeJson(exoKey(), s);
+  const sc = exoScore();
+  if (ok) {
+    sc.ok++;
+    sc.streak++;
+    sc.best = Math.max(sc.best, sc.streak);
+  } else {
+    sc.ko++;
+    sc.streak = 0;
+  }
+  writeJson(scoreKey(), sc);
+}
+
+/** Les 5 états d'un problème : jamais essayé, raté, réussi 1, 2 ou 3 fois d'affilée (validé). */
+type ExoStatus = 'new' | 'failed' | 'run1' | 'run2' | 'done';
+const STATUS_LABEL: Record<ExoStatus, string> = {
+  new: 'Jamais essayé',
+  failed: 'Raté',
+  run1: 'Réussi 1 fois',
+  run2: 'Réussi 2 fois de suite',
+  done: 'Validé (3 fois de suite)',
+};
+const STATUSES = Object.keys(STATUS_LABEL) as ExoStatus[];
+
+function exoStatus(stats: ExoStats, m: { id: string; ply: number }): ExoStatus {
+  const e = stats[`${m.id}#${m.ply}`];
+  if (!e) return 'new';
+  const run = e.run ?? (e.ko ? 0 : e.ok);
+  return run >= 3 ? 'done' : run === 2 ? 'run2' : run === 1 ? 'run1' : 'failed';
+}
+
+/** Toutes les erreurs du profil (cadence affichée), pour les problèmes aléatoires. */
+let profileMistakes: MistakeRecord[] = [];
+/** Cause travaillée (index dans profileCauses), ou -2 pour les problèmes aléatoires. */
 let problemCause = -1;
 
+function shuffle<T>(xs: T[]): T[] {
+  for (let i = xs.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [xs[i], xs[j]] = [xs[j], xs[i]];
+  }
+  return xs;
+}
+
+/** Problèmes d'un type d'erreur : les jamais réussis d'abord ; les validés ne sont plus proposés. */
 function openProblems(i: number) {
   const c = profileCauses[i];
   if (!c) return;
   problemCause = i;
   const stats = exoStats();
-  const solved = (m: MistakeRecord) => (stats[`${m.id}#${m.ply}`]?.ok ?? 0) > 0;
-  // Les exercices jamais réussis d'abord, les plus récents en tête.
+  const rank: Record<ExoStatus, number> = { new: 0, failed: 0, run1: 1, run2: 2, done: 3 };
   const queue = [...c.examples]
     .reverse()
-    .sort((a, b) => Number(solved(a)) - Number(solved(b)))
+    .filter((m) => exoStatus(stats, m) !== 'done')
+    .sort((a, b) => rank[exoStatus(stats, a)] - rank[exoStatus(stats, b)])
     .map((m) => ({ id: m.id, ply: m.ply }));
-  startPuzzleQueue(queue, 'problemes');
+  if (!startPuzzleQueue(queue, 'problemes')) showView('problemes');
   renderProblems();
+}
+
+/** Problèmes au hasard parmi les erreurs, ratés et gaffes (pas les imprécisions), sans dire le type. */
+function openRandomProblems() {
+  problemCause = -2;
+  const stats = exoStats();
+  const seen = new Set<string>();
+  const pool = profileMistakes.filter((m) => {
+    const k = `${m.id}#${m.ply}`;
+    if (m.classification === 'inaccuracy' || seen.has(k) || exoStatus(stats, m) === 'done') return false;
+    seen.add(k);
+    return true;
+  });
+  if (startPuzzleQueue(shuffle(pool).map((m) => ({ id: m.id, ply: m.ply })), 'problemes', true)) renderProblems();
+  else {
+    showView('problemes');
+    renderProblems();
+  }
+}
+
+/** Petite barre des états (gris, rouge, verts) d'un ensemble de problèmes. */
+function statusBar(items: { id: string; ply: number }[], stats: ExoStats): string {
+  const counts = groupCount(items.map((m) => exoStatus(stats, m)));
+  return `<span class="st-bar">${STATUSES.map((st) => {
+    const n = counts.get(st) ?? 0;
+    return n ? `<span class="st-${st}" style="flex:${n}" title="${STATUS_LABEL[st]} : ${n}"></span>` : '';
+  }).join('')}</span>`;
 }
 
 function renderProblems() {
   const stats = exoStats();
+  const sc = exoScore();
+  const randomPool = profileMistakes.filter((m) => m.classification !== 'inaccuracy');
+  const keys = new Set(randomPool.map((m) => `${m.id}#${m.ply}`));
+  const unique = [...keys].map((k) => ({ id: k.slice(0, k.lastIndexOf('#')), ply: Number(k.slice(k.lastIndexOf('#') + 1)) }));
+  const counts = groupCount(unique.map((m) => exoStatus(stats, m)));
+  const left = unique.length - (counts.get('done') ?? 0);
   const rows = profileCauses
     .map((c, i) => {
       if (c.tag === 'gache') return '';
-      const solved = c.examples.filter((m) => (stats[`${m.id}#${m.ply}`]?.ok ?? 0) > 0).length;
-      return `<button class="op-row ${i === problemCause ? 'current' : ''}" data-ptag="${i}">
-        <span class="op-name">${TAGS[c.tag]}</span><span class="muted" title="Exercices réussis">${solved}/${c.count}</span></button>`;
+      const done = c.examples.filter((m) => exoStatus(stats, m) === 'done').length;
+      return `<button class="op-row prob-row ${i === problemCause ? 'current' : ''}" data-ptag="${i}">
+        <span class="op-name">${TAGS[c.tag]}</span>${statusBar(c.examples, stats)}
+        <span class="muted" title="Problèmes validés">${done}/${c.count}</span></button>`;
     })
     .join('');
   $('side-problems').innerHTML = `<h2>Problèmes</h2>
-    <p class="muted">Retrouve le bon coup là où tu t'es trompé. Le compteur indique les exercices réussis du premier coup.</p>
+    <div class="score-grid">
+      <div><div class="muted">Réussis</div><b class="t-win">${sc.ok}</b></div>
+      <div><div class="muted">Ratés</div><b class="t-loss">${sc.ko}</b></div>
+      <div><div class="muted">Série</div><b>${sc.streak}</b></div>
+      <div><div class="muted">Meilleure série</div><b>${sc.best}</b></div>
+    </div>
+    <button class="primary ${problemCause === -2 ? 'active' : ''}" data-random>Problèmes aléatoires (${left})</button>
+    <p class="muted">Au hasard parmi tes erreurs et gaffes, sans indice : trouve le meilleur coup.
+      Un problème réussi 3 fois de suite est validé et n'est plus proposé.</p>
+    <div class="st-legend">${STATUSES.map((st) => `<span><i class="st-${st}"></i>${STATUS_LABEL[st]} <b>${counts.get(st) ?? 0}</b></span>`).join('')}</div>
+    <h3>Par type d'erreur</h3>
     <div class="op-list">${rows}</div>`;
 }
 
 $('side-problems').addEventListener('click', (e) => {
-  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-ptag]');
+  const t = e.target as HTMLElement;
+  if (t.closest('[data-random]')) return openRandomProblems();
+  const b = t.closest<HTMLElement>('[data-ptag]');
   if (b) openProblems(Number(b.dataset.ptag));
 });
 
@@ -1682,7 +1807,9 @@ function load(pgn: string, pov = profileName, view: View = 'partie') {
     }
   });
   const h = g.headers;
-  $('game-info').textContent = h.White ? `${h.White} – ${h.Black}${h.Result ? ` (${h.Result})` : ''}` : '';
+  $('game-info').innerHTML = h.White
+    ? `${esc(h.White)} – ${esc(h.Black)}${h.Result && h.Result !== '*' ? ` (${resultBadge(h.Result, h.White, h.Black ?? '', pov)})` : ''}`
+    : '';
   const orientation = pov && h.Black?.toLowerCase() === pov.toLowerCase() ? 'black' : 'white';
   board.set({ orientation });
   $('evalbar').classList.toggle('flipped', orientation === 'black');
