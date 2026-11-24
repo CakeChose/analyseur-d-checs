@@ -153,11 +153,14 @@
         </section>
 
         <section class="side-col">
-          <div>
+          <!-- Panneaux des pages « à travailler » (affichés selon la page) -->
+          <div id="side-problems" class="side-panel"></div>
+          <div id="side-openings" class="side-panel"></div>
+          <div class="partie-only">
             <div id="game-info" class="game-info"></div>
             <div id="opening" class="muted"></div>
           </div>
-          <div class="analyse-bar">
+          <div class="analyse-bar partie-only">
             <button id="analyse" class="primary">Analyser la partie</button>
             <label class="muted"
               >Profondeur
@@ -168,7 +171,7 @@
               </select>
             </label>
           </div>
-          <div id="progress" class="progress" hidden><div id="progress-fill"></div></div>
+          <div class="partie-only"><div id="progress" class="progress" hidden><div id="progress-fill"></div></div></div>
           <div id="review" class="review" hidden></div>
           <div class="engine">
             <label class="engine-head">

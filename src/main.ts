@@ -36,7 +36,7 @@ import {
 } from './profile';
 import { winPercent } from './winprob';
 import { explainMove } from './explain';
-import { loadBook, openingName } from './openings';
+import { loadBook, loadCatalogue, openingName, type CatalogueLine } from './openings';
 import { fetchChessCom, fetchLichess, type OnlineGame } from './import';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
@@ -102,6 +102,7 @@ function legalDests(fen: string): Map<Key, Key[]> {
 /** L'utilisateur joue un coup sur l'échiquier : on l'ajoute à l'arbre (variante). */
 function onUserMove(orig: Key, dest: Key) {
   if (!current) return;
+  if (training) return trainingMove(orig, dest);
   if (puzzle) return puzzleMove(orig, dest);
   const piece = new Chess(current.fen).get(orig as Square);
   const promoting = piece?.type === 'p' && (dest[1] === '8' || dest[1] === '1');
@@ -127,6 +128,7 @@ function show(node: TreeNode) {
   });
   scrollMoveIntoView();
   renderReview(node);
+  if (document.body.dataset.view === 'ouvertures' && !training) renderBookMoves();
   renderGraph();
   updateEngine(node);
 }
@@ -188,7 +190,7 @@ function clearEngine() {
 }
 
 function updateEngine(node: TreeNode) {
-  if (puzzle) {
+  if (puzzle || training) {
     // Pas d'aide du moteur pendant un exercice : ça donnerait la réponse.
     clearEngine();
     $('engine-status').textContent = 'masqué pendant l’exercice';
@@ -245,6 +247,7 @@ async function analyseLive(node: TreeNode) {
     if (isBookNode(node)) node.review.classification = 'book';
     renderMoves();
     renderReview(node);
+  if (document.body.dataset.view === 'ouvertures' && !training) renderBookMoves();
   }
   renderEval(node, ev, `profondeur ${LIVE_DEPTH}`);
 }
@@ -542,9 +545,9 @@ function finishAnalysis(result: GameAnalysis) {
 }
 
 /** Ouvre une partie enregistrée, déjà analysée, éventuellement à un coup donné. */
-async function openFiche(f: Fiche, ply?: number) {
+async function openFiche(f: Fiche, ply?: number, view: View = 'partie') {
   const keep = puzzle;
-  load(f.pgn);
+  load(f.pgn, profileName, view);
   puzzle = keep;
   await loadBook();
   if (!game || !root) return;
@@ -617,6 +620,10 @@ let puzzle: {
   index: number;
   state: 'try' | 'wrong' | 'solved' | 'shown';
   tried?: string;
+  /** Page où se déroule l'exercice (vue d'une partie ou page Problèmes). */
+  view: View;
+  /** Résultat déjà compté pour cet exercice (seul le premier essai compte). */
+  recorded?: boolean;
 } | null = null;
 
 const BAD: Classification[] = ['inaccuracy', 'mistake', 'miss', 'blunder'];
@@ -631,7 +638,7 @@ async function showPuzzle() {
   if (!game || gameId(game) !== item.id) {
     const f = await cacheGet<Fiche>(item.id);
     if (!f) return;
-    await openFiche(f);
+    await openFiche(f, undefined, puzzle.view);
   }
   const target = puzzleTarget();
   const color = target.move!.color === 'w' ? 'white' : 'black';
@@ -639,10 +646,10 @@ async function showPuzzle() {
   show(target.parent!);
 }
 
-function startPuzzleQueue(queue: { id: string; ply: number }[]) {
+function startPuzzleQueue(queue: { id: string; ply: number }[], view: View = 'partie') {
   if (!queue.length) return false;
-  puzzle = { queue, index: 0, state: 'try' };
-  showView('partie');
+  puzzle = { queue, index: 0, state: 'try', view };
+  showView(view);
   showPuzzle();
   return true;
 }
@@ -676,6 +683,11 @@ function puzzleMove(orig: Key, dest: Key) {
   const ok = goodAnswers(target.parent!).includes(orig + dest + promo);
   puzzle.state = ok ? 'solved' : 'wrong';
   puzzle.tried = san;
+  if (!puzzle.recorded) {
+    const item = puzzle.queue[puzzle.index];
+    recordExo(item.id, item.ply, ok);
+    puzzle.recorded = true;
+  }
   renderPuzzle();
   if (!ok) setTimeout(() => puzzle && show(target.parent!), 700);
   else board.set({ movable: { color: undefined } });
@@ -710,6 +722,11 @@ function renderPuzzle() {
   if (puzzle.state === 'try' || puzzle.state === 'wrong') {
     button('Solution', () => {
       puzzle!.state = 'shown';
+      if (!puzzle!.recorded) {
+        const item = puzzle!.queue[puzzle!.index];
+        recordExo(item.id, item.ply, false);
+        puzzle!.recorded = true;
+      }
       board.setAutoShapes([{ orig: bestUci.slice(0, 2) as Key, dest: bestUci.slice(2, 4) as Key, brush: 'green' }]);
       renderPuzzle();
     });
@@ -718,14 +735,18 @@ function renderPuzzle() {
     button('Suivant', () => {
       puzzle!.index++;
       puzzle!.state = 'try';
+      puzzle!.recorded = false;
       showPuzzle();
     });
   }
   button('Arrêter', () => {
+    const fromProblems = puzzle!.view === 'problemes';
     puzzle = null;
-    show(target);
+    if (fromProblems) showView('profil');
+    else show(target);
   });
   box.append(bar);
+  if (puzzle.view === 'problemes') renderProblems();
 }
 
 // ---------------------------------------------------------------------------
@@ -773,13 +794,19 @@ let profileStop = false;
 let profileExamples: MistakeRecord[] = [];
 let profileCauses: ProfileStats['causes'] = [];
 
-type View = 'accueil' | 'profil' | 'partie';
+type View = 'accueil' | 'profil' | 'partie' | 'problemes' | 'ouvertures';
 
 function showView(view: View) {
   $('view-accueil').hidden = view !== 'accueil';
   $('layout').hidden = view === 'accueil';
   $('view-profil').hidden = view !== 'profil';
-  $('view-analyse').hidden = view !== 'partie';
+  $('view-analyse').hidden = !['partie', 'problemes', 'ouvertures'].includes(view);
+  // On quitte un exercice ou un entraînement en changeant de page.
+  if (puzzle && view !== puzzle.view) puzzle = null;
+  if (view !== 'ouvertures') {
+    training = null;
+    document.body.classList.remove('training');
+  }
   $('go-profile').hidden = view === 'accueil';
   document.body.dataset.view = view;
   // Téléphone : sur une partie, la liste se replie pour garder l'échiquier en haut.
@@ -1021,9 +1048,15 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[], l
       <select id="profile-minloss">${LOSS_FILTERS.map(
         ([v, l]) => `<option value="${v}" ${v === profileMinLoss ? 'selected' : ''}>${l}</option>`,
       ).join('')}</select></label>`;
+  const exos = s.causes.filter((c) => c.tag !== 'gache').reduce((a, c) => a + c.count, 0);
+  const navCards = `<button class="card nav-card" data-goto="ouvertures"><b>Ouvertures</b>
+      <span class="muted">${s.openings[0] ? `Ta plus jouée : ${esc(s.openings[0].name.slice(s.openings[0].name.indexOf(' ') + 1))}` : 'Catalogue et entraînement'}</span></button>`;
+  const probCard = n
+    ? `<button class="card nav-card" data-goto="problemes"><b>Problèmes</b><span class="muted">${exos} exercices tirés de tes erreurs</span></button>`
+    : '';
   $('profile-side').innerHTML = n
-    ? `<h2 class="side-title">À travailler</h2>${weak}${lossSelect}<div class="cause-list">${causes}</div>`
-    : `<h2 class="side-title">À travailler</h2><section class="card"><p>Analyse tes parties pour découvrir tes erreurs les plus fréquentes.</p>
+    ? `<h2 class="side-title">À travailler</h2>${probCard}${navCards}${weak}${lossSelect}<div class="cause-list">${causes}</div>`
+    : `<h2 class="side-title">À travailler</h2>${navCards}<section class="card"><p>Analyse tes parties pour découvrir tes erreurs les plus fréquentes.</p>
        <button class="primary" data-run>Analyser toutes les parties</button></section>`;
 }
 
@@ -1057,7 +1090,13 @@ $('view-profil').addEventListener('click', async (e) => {
     return;
   }
   const train = t.closest<HTMLElement>('[data-train]');
-  if (train) startPuzzleQueue(profileCauses[Number(train.dataset.train)].examples.map((m) => ({ id: m.id, ply: m.ply })));
+  if (train) return openProblems(Number(train.dataset.train));
+  const goto = t.closest<HTMLElement>('[data-goto]');
+  if (goto?.dataset.goto === 'ouvertures') return openOpenings();
+  if (goto?.dataset.goto === 'problemes') {
+    const first = profileCauses.findIndex((c) => c.tag !== 'gache' && c.tag !== 'position');
+    return openProblems(first >= 0 ? first : profileCauses.findIndex((c) => c.tag !== 'gache'));
+  }
 });
 
 async function runProfile() {
@@ -1132,6 +1171,330 @@ async function importFile(file: File) {
 }
 
 // ---------------------------------------------------------------------------
+// Page Problèmes : exercices tirés de tes erreurs, par type, avec suivi de réussite
+// ---------------------------------------------------------------------------
+
+/** Résultats des exercices (« partie#demi-coup » → réussites / échecs), gardés dans le navigateur. */
+type ExoStats = Record<string, { ok: number; ko: number }>;
+const exoKey = () => `exos:${profileName.toLowerCase()}`;
+
+function exoStats(): ExoStats {
+  try {
+    return JSON.parse(localStorage.getItem(exoKey()) ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
+function recordExo(id: string, ply: number, ok: boolean) {
+  const s = exoStats();
+  const e = (s[`${id}#${ply}`] ??= { ok: 0, ko: 0 });
+  if (ok) e.ok++;
+  else e.ko++;
+  try {
+    localStorage.setItem(exoKey(), JSON.stringify(s));
+  } catch {
+    /* stockage indisponible : le suivi ne sera pas gardé */
+  }
+}
+
+/** Cause d'erreur travaillée sur la page Problèmes (index dans profileCauses). */
+let problemCause = -1;
+
+function openProblems(i: number) {
+  const c = profileCauses[i];
+  if (!c) return;
+  problemCause = i;
+  const stats = exoStats();
+  const solved = (m: MistakeRecord) => (stats[`${m.id}#${m.ply}`]?.ok ?? 0) > 0;
+  // Les exercices jamais réussis d'abord, les plus récents en tête.
+  const queue = [...c.examples]
+    .reverse()
+    .sort((a, b) => Number(solved(a)) - Number(solved(b)))
+    .map((m) => ({ id: m.id, ply: m.ply }));
+  startPuzzleQueue(queue, 'problemes');
+  renderProblems();
+}
+
+function renderProblems() {
+  const stats = exoStats();
+  const rows = profileCauses
+    .map((c, i) => {
+      if (c.tag === 'gache') return '';
+      const solved = c.examples.filter((m) => (stats[`${m.id}#${m.ply}`]?.ok ?? 0) > 0).length;
+      return `<button class="op-row ${i === problemCause ? 'current' : ''}" data-ptag="${i}">
+        <span class="op-name">${TAGS[c.tag]}</span><span class="muted" title="Exercices réussis">${solved}/${c.count}</span></button>`;
+    })
+    .join('');
+  $('side-problems').innerHTML = `<h2>Problèmes</h2>
+    <p class="muted">Retrouve le bon coup là où tu t'es trompé. Le compteur indique les exercices réussis du premier coup.</p>
+    <div class="op-list">${rows}</div>`;
+}
+
+$('side-problems').addEventListener('click', (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-ptag]');
+  if (b) openProblems(Number(b.dataset.ptag));
+});
+
+// ---------------------------------------------------------------------------
+// Page Ouvertures : mes ouvertures, catalogue, ligne choisie, entraînement
+// ---------------------------------------------------------------------------
+
+/** Ligne du catalogue affichée (null : la liste des ouvertures). */
+let openingLine: CatalogueLine | null = null;
+let openingQuery = '';
+/** Ouvertures de tes parties analysées, les plus jouées d'abord. */
+let myOpenings: { name: string; color: 'w' | 'b'; games: number; score: number }[] = [];
+/** Entraînement sur une ligne : le site joue l'adversaire, il faut retrouver les coups de la ligne. */
+let training: { moves: string[]; color: 'w' | 'b'; index: number; errors: number } | null = null;
+
+const shortName = (name: string) => (name.includes(':') ? name.slice(name.indexOf(':') + 1).trim() : name);
+const linePgn = (moves: string) =>
+  moves
+    .split(' ')
+    .map((m, i) => (i % 2 ? m : `${i / 2 + 1}. ${m}`))
+    .join(' ');
+
+async function openOpenings() {
+  openingLine = null;
+  load('', '', 'ouvertures');
+  const games = profileName ? await loadProfile(profileName) : [];
+  const groups = new Map<string, { name: string; color: 'w' | 'b'; games: number; points: number }>();
+  for (const g of games) {
+    const k = `${g.opening}|${g.color}`;
+    const e = groups.get(k) ?? { name: g.opening, color: g.color, games: 0, points: 0 };
+    e.games++;
+    e.points += g.result === 'win' ? 1 : g.result === 'draw' ? 0.5 : 0;
+    groups.set(k, e);
+  }
+  myOpenings = [...groups.values()]
+    .map((o) => ({ name: o.name, color: o.color, games: o.games, score: (100 * o.points) / o.games }))
+    .sort((a, b) => b.games - a.games);
+  renderOpenings();
+}
+
+const lineButton = (l: CatalogueLine, i: number, short: boolean) =>
+  `<button class="op-row" data-line="${i}"><span class="muted op-eco">${l[0]}</span><span class="op-name">${esc(short ? shortName(l[1]) : l[1])}</span></button>`;
+
+let families: Map<string, number[]> | null = null;
+
+/** Le catalogue rangé par famille (« Sicilian Defense » → ses variantes). */
+function familyIndex(cat: CatalogueLine[]): Map<string, number[]> {
+  if (!families) {
+    families = new Map();
+    cat.forEach((l, i) => {
+      const f = l[1].split(':')[0];
+      families!.set(f, [...(families!.get(f) ?? []), i]);
+    });
+  }
+  return families;
+}
+
+async function renderOpenings() {
+  const el = $('side-openings');
+  if (openingLine) return renderOpeningLine();
+  const mine = myOpenings.length
+    ? myOpenings
+        .slice(0, 8)
+        .map(
+          (o, i) =>
+            `<button class="op-row" data-mine="${i}"><span class="dot ${o.color === 'w' ? 'white' : 'black'}"></span>
+             <span class="op-name">${esc(o.name.slice(o.name.indexOf(' ') + 1))}</span>
+             <span class="muted">${o.games} · ${pct(o.score)}</span></button>`,
+        )
+        .join('')
+    : '<p class="muted">Analyse tes parties pour voir tes ouvertures ici.</p>';
+  el.innerHTML = `<h2>Ouvertures</h2>
+    <h3>Mes ouvertures</h3><div class="op-list">${mine}</div>
+    <h3>Toutes les ouvertures</h3>
+    <input id="op-search" type="search" placeholder="Chercher : Najdorf, Caro-Kann, B90…" autocomplete="off" />
+    <div class="op-list op-all"></div>`;
+  $<HTMLInputElement>('op-search').value = openingQuery;
+  await renderAllOpenings();
+}
+
+/** La liste « Toutes les ouvertures » : familles repliées, ou résultats de la recherche. */
+async function renderAllOpenings() {
+  const cat = await loadCatalogue();
+  const list = document.querySelector('.op-all');
+  if (!list) return;
+  const q = openingQuery.trim().toLowerCase();
+  if (q) {
+    const hits = cat.flatMap((l, i) => (`${l[0]} ${l[1]}`.toLowerCase().includes(q) ? [i] : [])).slice(0, 60);
+    list.innerHTML = hits.length ? hits.map((i) => lineButton(cat[i], i, false)).join('') : '<p class="muted">Aucune ouverture trouvée.</p>';
+    return;
+  }
+  list.innerHTML = [...familyIndex(cat)]
+    .map(([f, idx]) => `<details class="op-family"><summary>${esc(f)} <span class="muted">${idx.length}</span></summary><div class="op-vars" data-family="${esc(f)}"></div></details>`)
+    .join('');
+}
+
+async function selectLine(i: number, color: 'w' | 'b' = 'w') {
+  const cat = await loadCatalogue();
+  openingLine = cat[i];
+  training = null;
+  document.body.classList.remove('training');
+  load(linePgn(openingLine[2]), '', 'ouvertures');
+  board.set({ orientation: color === 'w' ? 'white' : 'black' });
+  $('evalbar').classList.toggle('flipped', color === 'b');
+  go.last();
+  renderOpenings();
+}
+
+function renderOpeningLine() {
+  if (!openingLine) return;
+  const [eco, name, moves] = openingLine;
+  const mine = myOpenings.filter((o) => o.name === `${eco} ${name}`);
+  $('side-openings').innerHTML = `<button class="link" data-back>‹ Toutes les ouvertures</button>
+    <h2>${esc(name)}</h2>
+    <div class="muted">${eco} · ${moves.split(' ').length} demi-coups de théorie</div>
+    ${mine.map((o) => `<p>Jouée ${o.games} fois avec les ${o.color === 'w' ? 'Blancs' : 'Noirs'} · ${pct(o.score)} des points</p>`).join('')}
+    <div class="train-bar">
+      <button class="primary" data-train-color="w">S'entraîner avec les Blancs</button>
+      <button data-train-color="b">avec les Noirs</button>
+    </div>
+    <p id="train-msg" class="train-msg"></p>
+    <div class="no-training"><h3>Suites de théorie</h3><div id="book-moves" class="op-list"></div></div>`;
+  renderBookMoves();
+}
+
+/** Coups de théorie depuis la position affichée : les coups légaux qui mènent à une position connue. */
+function renderBookMoves() {
+  const el = document.getElementById('book-moves');
+  if (!el || !current) return;
+  const items = new Chess(current.fen)
+    .moves({ verbose: true })
+    .flatMap((m) => {
+      const name = openingName(m.after);
+      return name ? [{ m, name }] : [];
+    });
+  el.innerHTML = items.length
+    ? items
+        .map(
+          ({ m, name }) =>
+            `<button class="op-row" data-book="${m.from}${m.to}${m.promotion ?? ''}"><b>${m.san}</b><span class="op-name muted">${esc(name.slice(name.indexOf(' ') + 1))}</span></button>`,
+        )
+        .join('')
+    : '<p class="muted">Fin de la théorie connue ici : regarde les suites de Stockfish.</p>';
+}
+
+$('side-openings').addEventListener('input', (e) => {
+  const t = e.target as HTMLInputElement;
+  if (t.id !== 'op-search') return;
+  openingQuery = t.value;
+  renderAllOpenings();
+});
+
+$('side-openings').addEventListener('click', async (e) => {
+  const t = e.target as HTMLElement;
+  if (t.closest('[data-back]')) {
+    openingLine = null;
+    training = null;
+    document.body.classList.remove('training');
+    return renderOpenings();
+  }
+  // Une famille s'ouvre : on remplit ses variantes à ce moment-là (3 900 lignes en tout).
+  const fam = t.closest('.op-family');
+  if (t.closest('summary') && fam) {
+    const vars = fam.querySelector<HTMLElement>('.op-vars')!;
+    if (!vars.childElementCount) {
+      const cat = await loadCatalogue();
+      vars.innerHTML = familyIndex(cat).get(vars.dataset.family!)!.map((i) => lineButton(cat[i], i, true)).join('');
+    }
+    return;
+  }
+  const line = t.closest<HTMLElement>('[data-line]');
+  if (line) return selectLine(Number(line.dataset.line));
+  const mine = t.closest<HTMLElement>('[data-mine]');
+  if (mine) {
+    const o = myOpenings[Number(mine.dataset.mine)];
+    const cat = await loadCatalogue();
+    const i = cat.findIndex((l) => `${l[0]} ${l[1]}` === o.name);
+    if (i >= 0) selectLine(i, o.color);
+    return;
+  }
+  const book = t.closest<HTMLElement>('[data-book]');
+  if (book && current) {
+    const u = book.dataset.book!;
+    const node = playMove(current, u.slice(0, 2), u.slice(2, 4), u[4]);
+    if (node) {
+      renderMoves();
+      show(node);
+    }
+    return;
+  }
+  const tc = t.closest<HTMLElement>('[data-train-color]');
+  if (tc) startTraining(tc.dataset.trainColor as 'w' | 'b');
+});
+
+function trainingMsg(text: string) {
+  const el = document.getElementById('train-msg');
+  if (el) el.textContent = text;
+}
+
+function startTraining(color: 'w' | 'b') {
+  if (!openingLine || !root) return;
+  training = { moves: openingLine[2].split(' '), color, index: 0, errors: 0 };
+  document.body.classList.add('training');
+  board.set({ orientation: color === 'w' ? 'white' : 'black' });
+  $('evalbar').classList.toggle('flipped', color === 'b');
+  show(root);
+  trainingStep();
+}
+
+/** Tour suivant : le site joue le coup de l'adversaire, ou attend le tien. */
+function trainingStep() {
+  const t = training;
+  if (!t || !current) return;
+  if (t.index >= t.moves.length) {
+    trainingMsg(`Ligne terminée ${t.errors ? `avec ${t.errors} erreur${t.errors > 1 ? 's' : ''}` : 'sans faute'} !`);
+    training = null;
+    document.body.classList.remove('training');
+    show(current);
+    return;
+  }
+  const turn = current.ply % 2 === 0 ? 'w' : 'b';
+  if (turn !== t.color) {
+    trainingMsg('L\'adversaire joue…');
+    setTimeout(() => {
+      if (training !== t || !current?.children[0]) return;
+      t.index++;
+      show(current.children[0]);
+      trainingStep();
+    }, 450);
+  } else {
+    trainingMsg(`À toi : trouve le coup de la ligne (${t.index + 1}/${t.moves.length}).`);
+  }
+}
+
+function trainingMove(orig: Key, dest: Key) {
+  const t = training!;
+  const node = current!;
+  const piece = new Chess(node.fen).get(orig as Square);
+  const promo = piece?.type === 'p' && (dest[1] === '8' || dest[1] === '1') ? 'q' : undefined;
+  let san = '';
+  try {
+    san = new Chess(node.fen).move({ from: orig, to: dest, promotion: promo }).san;
+  } catch {
+    return show(node);
+  }
+  const next = node.children[0];
+  if (san === t.moves[t.index] && next) {
+    t.index++;
+    show(next);
+    return trainingStep();
+  }
+  t.errors++;
+  trainingMsg(`${san} n'est pas le coup de la ligne : c'était ${t.moves[t.index]}. Rejoue-le.`);
+  const hint = [{ orig: next.move!.from as Key, dest: next.move!.to as Key, brush: 'green' }];
+  setTimeout(() => {
+    if (training !== t) return;
+    show(node);
+    board.setAutoShapes(hint);
+  }, 600);
+}
+
+// ---------------------------------------------------------------------------
 // Chargement et navigation
 // ---------------------------------------------------------------------------
 
@@ -1139,7 +1502,7 @@ async function importFile(file: File) {
  * Charge une partie et ouvre sa vue. `pov` : le joueur à mettre en bas de l'échiquier
  * (le profil par défaut, ou le pseudo recherché à l'import), qu'il ait les Blancs ou les Noirs.
  */
-function load(pgn: string, pov = profileName) {
+function load(pgn: string, pov = profileName, view: View = 'partie') {
   let g: Game;
   try {
     g = parsePgn(pgn);
@@ -1174,7 +1537,7 @@ function load(pgn: string, pov = profileName) {
   board.set({ orientation });
   $('evalbar').classList.toggle('flipped', orientation === 'black');
   importDialog().close();
-  showView('partie');
+  showView(view);
   renderGamesList();
   renderPlayers();
   renderReport();

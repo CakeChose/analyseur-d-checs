@@ -14,6 +14,16 @@ export function loadBook(): Promise<void> {
 
 const key = (fen: string) => fen.split(' ').slice(0, 4).join(' ');
 
+/** Une ligne du catalogue : [code ECO, nom, coups SAN séparés par des espaces]. */
+export type CatalogueLine = [string, string, string];
+let catalogue: Promise<CatalogueLine[]> | null = null;
+
+/** Le catalogue complet (~3 900 lignes), chargé seulement quand on ouvre la page Ouvertures. */
+export function loadCatalogue(): Promise<CatalogueLine[]> {
+  catalogue ??= import('./data/catalogue.json').then((m) => m.default as CatalogueLine[]);
+  return catalogue;
+}
+
 /** "C00 French Defense" si la position est une position de livre connue. */
 export function openingName(fen: string): string | undefined {
   return book?.[key(fen)];

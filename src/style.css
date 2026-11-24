@@ -1267,3 +1267,124 @@ button.primary {
     padding: 24px 16px;
   }
 }
+/* ===========================================================================
+   Pages « à travailler » : Problèmes et Ouvertures (même échiquier que la vue d'une partie)
+   =========================================================================== */
+.side-panel {
+  display: none;
+}
+body[data-view='problemes'] #side-problems,
+body[data-view='ouvertures'] #side-openings {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+body[data-view='problemes'] .side-col > :not(#side-problems):not(#review),
+body[data-view='ouvertures'] .partie-only,
+body[data-view='problemes'] #graph,
+body[data-view='problemes'] #report,
+body[data-view='ouvertures'] #graph,
+body[data-view='ouvertures'] #report,
+body[data-view='ouvertures'] .player,
+body[data-view='ouvertures'] #key-prev,
+body[data-view='ouvertures'] #key-next,
+body:not([data-view='partie']) .hint {
+  display: none;
+}
+/* Entraînement : on cache ce qui donnerait la réponse. */
+body.training #moves,
+body.training .no-training,
+body.training .train-bar {
+  display: none;
+}
+.side-panel h2 {
+  font-size: 18px;
+  margin: 0;
+}
+.side-panel h3 {
+  font-size: 14px;
+  margin: 8px 0 0;
+  color: var(--muted);
+}
+.op-list {
+  display: flex;
+  flex-direction: column;
+  max-height: 340px;
+  overflow-y: auto;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.op-list > p {
+  margin: 8px 12px;
+}
+.op-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid var(--border);
+  border-radius: 0;
+  background: none;
+  padding: 8px 12px;
+  text-align: left;
+  font-size: 14px;
+}
+.op-row:hover,
+.op-row.current {
+  background: var(--border);
+}
+.op-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.op-eco {
+  font-size: 12px;
+  width: 2.5em;
+}
+.op-family {
+  border-bottom: 1px solid var(--border);
+}
+.op-family summary {
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.op-vars .op-row {
+  padding-left: 24px;
+}
+#op-search {
+  padding: 8px;
+  font-size: 14px;
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.train-bar {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.train-msg {
+  margin: 0;
+  font-weight: 600;
+}
+.train-msg:empty {
+  display: none;
+}
+.nav-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  font-size: 15px;
+}
+.nav-card:hover {
+  border-color: var(--accent);
+}
