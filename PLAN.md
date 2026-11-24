@@ -303,6 +303,11 @@ On construit d'abord le **squelette** (10.1 à 10.4), puis les **pages d'apprent
   (détail des causes, exercices « S'entraîner ») ; ensuite, vers les pages d'apprentissage (10.5).
 - En haut : pseudo, « Importer une partie », « Analyser toutes les parties », **« Exporter mes analyses »** et
   **« Restaurer mes analyses »** (noms distincts pour ne pas confondre avec l'import d'une partie).
+- Courbes Elo et précision côte à côte, avec axes. Cartes en plus, sur les dernières parties de la cadence
+  (pour ne pas être faussées par les anciennes) : meilleure victoire, adversaire le plus fort, Elo moyen
+  des adversaires, performance estimée, séries, score Blancs / Noirs, fins de partie (mat, abandon, temps…).
+  Carte « Toutes les cadences » (API stats chess.com, tout l'historique) : Elo actuel, meilleur Elo et sa date,
+  nombre de parties, V / N / D, score ; meilleur classement en problèmes.
 - Liste gardée en cache ~1 h pour ne pas interroger chess.com à chaque visite.
 - Téléphone : stats générales → cartes cliquables → liste des parties.
 

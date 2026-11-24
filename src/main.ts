@@ -37,7 +37,7 @@ import {
 import { winPercent } from './winprob';
 import { explainMove } from './explain';
 import { loadBook, loadCatalogue, openingName, type CatalogueLine } from './openings';
-import { fetchChessCom, fetchLichess, type OnlineGame } from './import';
+import { fetchChessCom, fetchChessComStats, fetchLichess, type OnlineGame, type SpeedStats } from './import';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -911,11 +911,15 @@ const RESULT_LABEL = { win: 'Victoire', loss: 'Défaite', draw: 'Nulle' };
 $('games-list').addEventListener('click', async (e) => {
   const b = (e.target as HTMLElement).closest<HTMLElement>('[data-gi]');
   if (!b) return;
-  const g = listGames[Number(b.dataset.gi)];
+  openListGame(listGames[Number(b.dataset.gi)]);
+});
+
+/** Ouvre une partie de la liste : déjà analysée si possible, sinon telle quelle. */
+async function openListGame(g: OnlineGame) {
   const f = await cacheGet<Fiche>(linkOf(g.pgn));
   if (f) await openFiche(f);
   else load(g.pgn);
-});
+}
 
 // ---------------------------------------------------------------------------
 // Page profil
@@ -933,6 +937,7 @@ async function refreshProfile() {
   } catch (e) {
     $('games-status').textContent = `Impossible de récupérer les parties : ${(e as Error).message}.`;
   }
+  chessStats = await loadChessStats(user).catch(() => null);
   const summaries = await loadProfile(user);
   accById = new Map(summaries.map((s) => [s.id, s.accuracy]));
   renderGamesList();
@@ -944,6 +949,125 @@ async function refreshProfile() {
     counts,
     listGames.filter((g) => g.speed === profileSpeed),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Statistiques en plus : adversaires, fins de partie, toutes les cadences
+// ---------------------------------------------------------------------------
+
+/** Statistiques chess.com par cadence (Elo, meilleur Elo, bilan), gardées 1 h comme la liste. */
+let chessStats: { speeds: Record<string, SpeedStats>; puzzleBest?: number } | null = null;
+
+async function loadChessStats(user: string) {
+  const key = `stats:${user.toLowerCase()}`;
+  try {
+    const cached = JSON.parse(localStorage.getItem(key) ?? 'null');
+    if (cached && Date.now() - cached.at < 3600_000) return cached.stats;
+  } catch {
+    /* cache illisible : on recharge */
+  }
+  const stats = await fetchChessComStats(user);
+  try {
+    localStorage.setItem(key, JSON.stringify({ at: Date.now(), stats }));
+  } catch {
+    /* stockage plein */
+  }
+  return stats;
+}
+
+const fact = (label: string, value: string, title = '') =>
+  `<div class="fact" ${title ? `title="${title}"` : ''}><div class="muted">${label}</div><div class="fact-v">${value}</div></div>`;
+
+/** Adversaires et séries, sur les dernières parties seulement (les anciennes faussent le tableau). */
+function opponentCard(list: OnlineGame[]): string {
+  const u = profileName.toLowerCase();
+  const rows = list
+    .map((g) => {
+      const white = g.white.toLowerCase() === u;
+      return { g, white, opp: white ? g.black : g.white, elo: (white ? g.blackElo : g.whiteElo) ?? 0, res: resultFor(g) };
+    })
+    .filter((r) => r.elo);
+  if (!rows.length) return '';
+  const link = (r: (typeof rows)[number]) =>
+    `<button class="link" data-open-gi="${listGames.indexOf(r.g)}">${esc(r.opp)} (${r.elo})</button> <span class="muted">${shortDate(r.g.date)}</span>`;
+  const wins = rows.filter((r) => r.res === 'win');
+  const losses = rows.filter((r) => r.res === 'loss').length;
+  const best = wins.reduce<(typeof rows)[number] | undefined>((a, r) => (!a || r.elo > a.elo ? r : a), undefined);
+  const strongest = rows.reduce((a, r) => (r.elo > a.elo ? r : a));
+  const avg = Math.round(rows.reduce((a, r) => a + r.elo, 0) / rows.length);
+  const perf = Math.round(avg + (400 * (wins.length - losses)) / rows.length);
+  // Séries : la liste va de la plus récente à la plus ancienne.
+  let streak = 0;
+  while (streak < rows.length && rows[streak].res === rows[0].res) streak++;
+  const streakLabel = { win: 'victoire', loss: 'défaite', draw: 'nulle' }[rows[0].res];
+  let longest = 0;
+  let run = 0;
+  for (const r of rows) {
+    run = r.res === 'win' ? run + 1 : 0;
+    longest = Math.max(longest, run);
+  }
+  const scoreOf = (white: boolean) => {
+    const rs = rows.filter((r) => r.white === white);
+    return rs.length ? `${pct((100 * rs.reduce((a, r) => a + (r.res === 'win' ? 1 : r.res === 'draw' ? 0.5 : 0), 0)) / rs.length)} <span class="muted">(${rs.length})</span>` : '—';
+  };
+  return `<section class="card"><h2>Adversaires</h2>
+    <p class="muted">Sur tes ${rows.length} dernières parties en ${SPEEDS[profileSpeed].toLowerCase()}.</p>
+    <div class="facts-grid">
+      ${fact('Meilleure victoire', best ? link(best) : '—')}
+      ${fact('Adversaire le plus fort', link(strongest))}
+      ${fact('Elo moyen des adversaires', String(avg))}
+      ${fact('Performance', String(perf), 'Estimation : Elo moyen des adversaires + 400 × (victoires − défaites) / parties')}
+      ${fact('Série en cours', `${streak} ${streakLabel}${streak > 1 ? 's' : ''}`)}
+      ${fact('Plus longue série de victoires', String(longest))}
+      ${fact('Score avec les Blancs', scoreOf(true))}
+      ${fact('Score avec les Noirs', scoreOf(false))}
+    </div></section>`;
+}
+
+/** Comment se terminent les parties (d'après l'en-tête Termination de chess.com). */
+const END_REASONS: [RegExp, string][] = [
+  [/checkmate/i, 'mat'],
+  [/resignation/i, 'abandon'],
+  [/insufficient/i, 'matériel insuffisant'],
+  [/on time|timeout/i, 'temps'],
+  [/abandoned/i, 'partie quittée'],
+  [/agreement/i, 'accord'],
+  [/repetition/i, 'répétition'],
+  [/stalemate/i, 'pat'],
+  [/50/, 'règle des 50 coups'],
+];
+
+function endingsCard(list: OnlineGame[]): string {
+  if (!list.length) return '';
+  const reasonOf = (pgn: string) => {
+    const t = pgn.match(/\[Termination "([^"]+)"\]/)?.[1] ?? '';
+    return END_REASONS.find(([re]) => re.test(t))?.[1] ?? 'autre';
+  };
+  const line = (res: 'win' | 'loss' | 'draw', label: string) => {
+    const gs = list.filter((g) => resultFor(g) === res);
+    if (!gs.length) return '';
+    const counts = [...groupCount(gs.map((g) => reasonOf(g.pgn)))].sort((a, b) => b[1] - a[1]);
+    return `<tr><td><span class="res-dot ${res}"></span>${label} <span class="muted">(${gs.length})</span></td>
+      <td>${counts.map(([r, c]) => `${r} ${pct((100 * c) / gs.length)}`).join(' · ')}</td></tr>`;
+  };
+  return `<section class="card"><h2>Fins de partie</h2>
+    <table class="stats">${line('win', 'Victoires')}${line('loss', 'Défaites')}${line('draw', 'Nulles')}</table></section>`;
+}
+
+/** Toutes les cadences, sur tout l'historique du compte chess.com. */
+function speedsCard(): string {
+  if (!chessStats) return '';
+  const rows = SPEED_ORDER.filter((sp) => chessStats!.speeds[sp]).map((sp) => {
+    const s = chessStats!.speeds[sp];
+    const n = s.win + s.loss + s.draw;
+    const best = s.best ? `${s.best}${s.bestDate ? ` <span class="muted">${new Date(s.bestDate).toLocaleDateString('fr-FR')}</span>` : ''}` : '—';
+    return `<tr class="${sp === profileSpeed ? 'current' : ''}"><td>${SPEEDS[sp]}</td><td>${s.rating ?? '—'}</td><td>${best}</td>
+      <td>${n.toLocaleString('fr-FR')}</td><td>${[s.win, s.draw, s.loss].map((x) => x.toLocaleString('fr-FR')).join(' / ')}</td><td>${n ? pct((100 * (s.win + s.draw / 2)) / n) : '—'}</td></tr>`;
+  });
+  if (!rows.length) return '';
+  return `<section class="card"><h2>Toutes les cadences</h2>
+    <p class="muted">Sur tout ton historique chess.com.${chessStats.puzzleBest ? ` Meilleur classement en problèmes : ${chessStats.puzzleBest}.` : ''}</p>
+    <table class="stats"><tr><th>Cadence</th><th>Elo</th><th>Meilleur</th><th>Parties</th><th>V / N / D</th><th>Score</th></tr>${rows.join('')}</table></section>`;
 }
 
 /** Seuil de la synthèse : perte minimale (points de chances de gain) pour qu'une erreur compte. */
@@ -1020,12 +1144,17 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[], l
       ${kpi('Bilan', list.length ? pct((100 * (rec.win + rec.draw / 2)) / list.length) : '—', `${rec.win} V · ${rec.draw} N · ${rec.loss} D`)}
       ${kpi('Gaffes par partie', n ? (blunders / n).toFixed(1) : '—', `${n} partie${n > 1 ? 's' : ''} analysée${n > 1 ? 's' : ''} sur ${list.length}`)}
     </div>
+    <div class="chart-row">
     <section class="card"><h2>Elo — ${SPEEDS[profileSpeed]}</h2>${sparkline(elos, eloGames.map((g) => shortDate(g.date)), 'elo', (v) => String(Math.round(v)), 'Elo')}</section>
     <section class="card"><h2>Précision par partie</h2>${
       n
         ? sparkline(accs, accGames.map((g) => shortDate(g.date)), 'acc-line', (v) => v.toFixed(1), 'Précision (%)')
         : '<p class="muted">Analyse tes parties pour voir ta précision.</p>'
     }</section>
+    </div>
+    ${opponentCard(list)}
+    ${endingsCard(list)}
+    ${speedsCard()}
     <section class="card">
       <h2>Ouvertures les plus jouées</h2>
       ${
@@ -1103,6 +1232,8 @@ $('view-profil').addEventListener('click', async (e) => {
     return;
   }
   if (t.closest('[data-run]')) return runProfile();
+  const og = t.closest<HTMLElement>('[data-open-gi]');
+  if (og) return openListGame(listGames[Number(og.dataset.openGi)]);
   const ex = t.closest<HTMLElement>('[data-ex]');
   if (ex) {
     const m = profileExamples[Number(ex.dataset.ex)];

@@ -17,6 +17,38 @@ export interface OnlineGame {
 
 const MAX = 20;
 
+/** Statistiques d'une cadence sur chess.com (toutes les parties du compte, pas seulement les récentes). */
+export interface SpeedStats {
+  rating?: number;
+  best?: number;
+  /** Date du meilleur Elo, en millisecondes. */
+  bestDate?: number;
+  win: number;
+  loss: number;
+  draw: number;
+}
+
+/** Elo actuel, meilleur Elo et bilan par cadence, plus le meilleur classement en problèmes. */
+export async function fetchChessComStats(user: string): Promise<{ speeds: Record<string, SpeedStats>; puzzleBest?: number }> {
+  const res = await fetch(`https://api.chess.com/pub/player/${encodeURIComponent(user.toLowerCase())}/stats`);
+  if (!res.ok) throw new Error(`chess.com a répondu ${res.status}`);
+  const d = await res.json();
+  const speeds: Record<string, SpeedStats> = {};
+  for (const sp of ['rapid', 'blitz', 'bullet', 'daily']) {
+    const s = d[`chess_${sp}`];
+    if (!s) continue;
+    speeds[sp] = {
+      rating: s.last?.rating,
+      best: s.best?.rating,
+      bestDate: s.best?.date ? s.best.date * 1000 : undefined,
+      win: s.record?.win ?? 0,
+      loss: s.record?.loss ?? 0,
+      draw: s.record?.draw ?? 0,
+    };
+  }
+  return { speeds, puzzleBest: d.tactics?.highest?.rating };
+}
+
 /** Les `max` dernières parties chess.com du joueur, d'une cadence donnée si `speed` est fourni. */
 export async function fetchChessCom(user: string, max = MAX, speed?: string): Promise<OnlineGame[]> {
   const base = `https://api.chess.com/pub/player/${encodeURIComponent(user.toLowerCase())}`;
