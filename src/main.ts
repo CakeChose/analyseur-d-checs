@@ -960,16 +960,33 @@ const SPEEDS: Record<string, string> = { bullet: 'Bullet', blitz: 'Blitz', rapid
 /** Cadence affichée dans la synthèse du profil. */
 let profileSpeed = '';
 
-/** Petite courbe (au moins deux points), avec la première et la dernière valeur en légende. */
-function sparkline(values: number[], cls: string, fmt: (v: number) => string): string {
+/**
+ * Courbe avec ses axes : en ordonnée, les valeurs (max, milieu, min) ; en abscisse, la date
+ * de la première, de la partie du milieu et de la dernière partie.
+ */
+function sparkline(values: number[], dates: string[], cls: string, fmt: (v: number) => string, yTitle: string): string {
   if (values.length < 2) return '<p class="muted">Pas encore assez de parties pour tracer une courbe.</p>';
   const lo = Math.min(...values);
   const hi = Math.max(...values);
   const span = hi - lo || 1;
+  // Marges de 4 en haut et en bas : les graduations tombent sur y = 4, 30 et 56.
   const pts = values.map((v, i) => `${(i / (values.length - 1)) * 200},${56 - ((v - lo) / span) * 52}`).join(' ');
-  return `<svg class="spark ${cls}" viewBox="0 0 200 60" preserveAspectRatio="none"><polyline points="${pts}" /></svg>
-    <div class="muted spark-l"><span>min ${fmt(lo)} · max ${fmt(hi)}</span><span>dernière : ${fmt(values.at(-1)!)}</span></div>`;
+  const mid = Math.floor((values.length - 1) / 2);
+  return `<div class="chart">
+      <div class="y-title">${yTitle}</div><div></div>
+      <div class="y-axis"><span>${fmt(hi)}</span><span>${fmt((hi + lo) / 2)}</span><span>${fmt(lo)}</span></div>
+      <svg class="spark ${cls}" viewBox="0 0 200 60" preserveAspectRatio="none">
+        <line class="grid" x1="0" x2="200" y1="4" y2="4" /><line class="grid" x1="0" x2="200" y1="30" y2="30" /><line class="grid" x1="0" x2="200" y1="56" y2="56" />
+        <polyline points="${pts}" /></svg>
+      <div></div>
+      <div class="x-axis"><span>${dates[0]}</span><span>${dates[mid]}</span><span>${dates.at(-1)}</span></div>
+      <div></div><div class="x-title">Parties (de la plus ancienne à la plus récente) · dernière : ${fmt(values.at(-1)!)}</div>
+    </div>`;
 }
+
+/** "2026.11.23 18:04:12" ou Date → "23/11". */
+const shortDate = (d: Date | string) =>
+  typeof d === 'string' ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
 
 function renderProfile(s: ProfileStats, counts: (readonly [string, number])[], list: OnlineGame[]) {
   const n = s.games.length;
@@ -983,7 +1000,8 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[], l
 
   // Milieu : les statistiques à lire.
   const chrono = [...list].reverse();
-  const elos = chrono.map((g) => (g.white.toLowerCase() === u ? g.whiteElo : g.blackElo)).filter((x): x is number => !!x);
+  const eloGames = chrono.filter((g) => (g.white.toLowerCase() === u ? g.whiteElo : g.blackElo));
+  const elos = eloGames.map((g) => (g.white.toLowerCase() === u ? g.whiteElo : g.blackElo)!);
   const rec = { win: 0, draw: 0, loss: 0 };
   for (const g of list) rec[resultFor(g)]++;
   const kpi = (label: string, value: string, sub = '') =>
@@ -991,7 +1009,8 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[], l
   const byColor = (c: 'w' | 'b') => (s.games.some((g) => g.color === c) ? s.accuracy[c].toFixed(1) : '—');
   const blunders = s.games.flatMap((g) => g.mistakes).filter((m) => m.classification === 'blunder').length;
   const eloDiff = elos.length >= 2 ? elos.at(-1)! - elos[0] : 0;
-  const accs = [...s.games].sort((a, b) => a.date.localeCompare(b.date)).map((g) => g.accuracy);
+  const accGames = [...s.games].sort((a, b) => a.date.localeCompare(b.date));
+  const accs = accGames.map((g) => g.accuracy);
   const row = (cells: (string | number)[]) => `<tr>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
   $('profile-main').innerHTML = `
     ${speedButtons}
@@ -1001,9 +1020,11 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[], l
       ${kpi('Bilan', list.length ? pct((100 * (rec.win + rec.draw / 2)) / list.length) : '—', `${rec.win} V · ${rec.draw} N · ${rec.loss} D`)}
       ${kpi('Gaffes par partie', n ? (blunders / n).toFixed(1) : '—', `${n} partie${n > 1 ? 's' : ''} analysée${n > 1 ? 's' : ''} sur ${list.length}`)}
     </div>
-    <section class="card"><h2>Elo — ${SPEEDS[profileSpeed]}</h2>${sparkline(elos, 'elo', String)}</section>
+    <section class="card"><h2>Elo — ${SPEEDS[profileSpeed]}</h2>${sparkline(elos, eloGames.map((g) => shortDate(g.date)), 'elo', (v) => String(Math.round(v)), 'Elo')}</section>
     <section class="card"><h2>Précision par partie</h2>${
-      n ? sparkline(accs, 'acc-line', (v) => v.toFixed(1)) : '<p class="muted">Analyse tes parties pour voir ta précision.</p>'
+      n
+        ? sparkline(accs, accGames.map((g) => shortDate(g.date)), 'acc-line', (v) => v.toFixed(1), 'Précision (%)')
+        : '<p class="muted">Analyse tes parties pour voir ta précision.</p>'
     }</section>
     <section class="card">
       <h2>Ouvertures les plus jouées</h2>
