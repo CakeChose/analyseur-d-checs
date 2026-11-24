@@ -1013,7 +1013,7 @@ function opponentCard(list: OnlineGame[]): string {
   return `<section class="card"><h2>Adversaires</h2>
     <p class="muted">Sur tes ${rows.length} dernières parties en ${SPEEDS[profileSpeed].toLowerCase()}.</p>
     <div class="facts-grid">
-      ${fact('Meilleure victoire', best ? link(best) : '—')}
+      ${fact('Victoire contre le plus fort', best ? link(best) : '—', "Ta victoire contre l'adversaire qui avait l'Elo le plus élevé")}
       ${fact('Adversaire le plus fort', link(strongest))}
       ${fact('Elo moyen des adversaires', String(avg))}
       ${fact('Performance', String(perf), 'Estimation : Elo moyen des adversaires + 400 × (victoires − défaites) / parties')}
