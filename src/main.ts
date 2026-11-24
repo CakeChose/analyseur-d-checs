@@ -993,7 +993,6 @@ function opponentCard(list: OnlineGame[]): string {
   const wins = rows.filter((r) => r.res === 'win');
   const losses = rows.filter((r) => r.res === 'loss').length;
   const best = wins.reduce<(typeof rows)[number] | undefined>((a, r) => (!a || r.elo > a.elo ? r : a), undefined);
-  const strongest = rows.reduce((a, r) => (r.elo > a.elo ? r : a));
   const avg = Math.round(rows.reduce((a, r) => a + r.elo, 0) / rows.length);
   const perf = Math.round(avg + (400 * (wins.length - losses)) / rows.length);
   // Séries : la liste va de la plus récente à la plus ancienne.
@@ -1014,7 +1013,6 @@ function opponentCard(list: OnlineGame[]): string {
     <p class="muted">Sur tes ${rows.length} dernières parties en ${SPEEDS[profileSpeed].toLowerCase()}.</p>
     <div class="facts-grid">
       ${fact('Victoire contre le plus fort', best ? link(best) : '—', "Ta victoire contre l'adversaire qui avait l'Elo le plus élevé")}
-      ${fact('Adversaire le plus fort', link(strongest))}
       ${fact('Elo moyen des adversaires', String(avg))}
       ${fact('Performance', String(perf), 'Estimation : Elo moyen des adversaires + 400 × (victoires − défaites) / parties')}
       ${fact('Série en cours', `${streak} ${streakLabel}${streak > 1 ? 's' : ''}`)}
