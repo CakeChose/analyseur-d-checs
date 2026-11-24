@@ -257,6 +257,19 @@ Objectif : un site agréable sur téléphone, installable comme une appli, sans 
 - Pas de présence dans l'App Store / le Play Store : possible plus tard (Capacitor), mais comptes
   développeur payants et validation des magasins.
 
+## Design épuré — fait
+- Pièces cburnett (libres, GPL) ; échiquier vert et crème sans relief (thème marron de chessground retiré,
+  couleurs dans `src/style.css`). Les pièces façon chess.com ne sont pas libres : on ne les copie pas.
+- Barre du haut : nom, onglets Analyse / Profil, bouton « Importer une partie » qui ouvre une fenêtre
+  (parties chess.com / Lichess ou PGN collé).
+- Noms des joueurs au-dessus et au-dessous de l'échiquier, avec Elo et précision.
+- Coup commenté : une simple barre de couleur ; boutons « ‹ Erreur / Erreur › » (erreurs, ratés, gaffes).
+- Profil en tableau de bord : chiffres clés (précision, Elo estimé, score, gaffes par partie),
+  « Ton point faible n°1 » avec « S'entraîner » (hors catégorie fourre-tout « erreur de position »),
+  causes en barres, erreurs par phase en pastilles colorées, courbe de précision par mois.
+- Téléphone : barre de navigation en bas (Analyse, Importer, Profil).
+- Non fait : onglets Coups / Moteur / Bilan sous l'échiquier sur téléphone.
+
 ## Pistes pour la suite
 - Calibrer les seuils (surtout Brillant et Seul coup) sur des parties analysées par chess.com.
 - Choix de la pièce lors d'une promotion (aujourd'hui : dame automatique).

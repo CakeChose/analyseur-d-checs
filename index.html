@@ -11,10 +11,42 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
   </head>
   <body>
-    <nav class="tabs">
-      <button id="tab-analyse" class="tab active">Analyse</button>
-      <button id="tab-profil" class="tab">Mon profil</button>
-    </nav>
+    <header class="topbar">
+      <span class="brand"><img src="/icon-192.png" alt="" width="26" height="26" />Analyseur</span>
+      <nav class="tabs">
+        <button id="tab-analyse" class="tab active">Analyse</button>
+        <button id="tab-profil" class="tab">Profil</button>
+      </nav>
+      <span class="spacer"></span>
+      <button id="open-import" class="primary">Importer une partie</button>
+    </header>
+
+    <!-- Fenêtre d'import : parties en ligne ou PGN collé -->
+    <dialog id="import-dialog" class="import-dialog">
+      <form method="dialog" class="dialog-head">
+        <h2>Importer une partie</h2>
+        <button aria-label="Fermer" title="Fermer">✕</button>
+      </form>
+      <section>
+        <h3>Depuis chess.com ou Lichess</h3>
+        <div class="online-form">
+          <select id="online-site">
+            <option value="chesscom">chess.com</option>
+            <option value="lichess">Lichess</option>
+          </select>
+          <input id="online-user" type="text" placeholder="Pseudo" autocomplete="off" />
+          <button id="online-search">Chercher</button>
+        </div>
+        <p id="online-status" class="muted"></p>
+        <ul id="online-games" class="online-games"></ul>
+      </section>
+      <section>
+        <h3>Coller un PGN</h3>
+        <textarea id="pgn" rows="6" placeholder="1. e4 e5 2. Nf3 …"></textarea>
+        <button id="load">Charger</button>
+        <p id="error" class="error"></p>
+      </section>
+    </dialog>
 
     <!-- Page profil : analyse en lot des parties chess.com et synthèse -->
     <main id="view-profil" class="profile" hidden>
@@ -55,7 +87,7 @@
     </main>
 
     <main id="view-analyse" class="app">
-      <!-- Colonne de gauche : la partie, l'analyse, le bilan, l'import -->
+      <!-- Colonne de gauche : la partie, l'analyse, le bilan -->
       <section class="game-col">
         <div>
           <div id="game-info" class="game-info"></div>
@@ -74,29 +106,11 @@
         </div>
         <div id="progress" class="progress" hidden><div id="progress-fill"></div></div>
         <div id="report" class="report" hidden></div>
-        <details class="import" open>
-          <summary>Mes parties chess.com / Lichess</summary>
-          <div class="online-form">
-            <select id="online-site">
-              <option value="chesscom">chess.com</option>
-              <option value="lichess">Lichess</option>
-            </select>
-            <input id="online-user" type="text" placeholder="Pseudo" autocomplete="off" />
-            <button id="online-search">Chercher</button>
-          </div>
-          <p id="online-status" class="muted"></p>
-          <ul id="online-games" class="online-games"></ul>
-        </details>
-        <details class="import">
-          <summary>Importer une partie (PGN)</summary>
-          <textarea id="pgn" rows="8" placeholder="Colle ici le PGN de ta partie"></textarea>
-          <button id="load">Charger</button>
-          <p id="error" class="error"></p>
-        </details>
       </section>
 
-      <!-- Colonne centrale : l'échiquier -->
+      <!-- Colonne centrale : l'échiquier, encadré par les deux joueurs -->
       <section class="board-col">
+        <div id="player-top" class="player"></div>
         <div class="board-row">
           <div id="evalbar" class="evalbar" title="Évaluation">
             <div id="evalbar-fill" class="evalbar-fill"></div>
@@ -104,14 +118,15 @@
           </div>
           <div id="board" class="board"></div>
         </div>
+        <div id="player-bottom" class="player"></div>
         <div class="nav">
-          <button id="first" title="Début (Origine)">⏮</button>
-          <button id="prev" title="Coup précédent (←)">◀</button>
-          <button id="next" title="Coup suivant (→)">▶</button>
-          <button id="last" title="Fin">⏭</button>
-          <button id="flip" title="Retourner l'échiquier">⇅</button>
-          <button id="key-prev" title="Moment clé précédent (erreur, gaffe, coup brillant…)">‹ Clé</button>
-          <button id="key-next" title="Moment clé suivant (erreur, gaffe, coup brillant…)">Clé ›</button>
+          <button id="first" title="Début (Origine)" aria-label="Début">⏮</button>
+          <button id="prev" title="Coup précédent (←)" aria-label="Coup précédent">◀</button>
+          <button id="next" title="Coup suivant (→)" aria-label="Coup suivant">▶</button>
+          <button id="last" title="Fin" aria-label="Fin">⏭</button>
+          <button id="flip" title="Retourner l'échiquier" aria-label="Retourner l'échiquier">⇅</button>
+          <button id="key-prev" title="Erreur précédente (imprécisions exclues)">‹ Erreur</button>
+          <button id="key-next" title="Erreur suivante (imprécisions exclues)">Erreur ›</button>
         </div>
         <p class="hint muted">
           Joue un coup sur l'échiquier pour essayer une variante · ↑ pour revenir à la partie
@@ -132,6 +147,13 @@
         <div id="moves" class="moves"></div>
       </section>
     </main>
+
+    <!-- Téléphone : navigation en bas, à portée du pouce -->
+    <nav class="bottom-nav">
+      <button id="bn-analyse" class="active"><span aria-hidden="true">♞</span>Analyse</button>
+      <button id="bn-import"><span aria-hidden="true">⤓</span>Importer</button>
+      <button id="bn-profil"><span aria-hidden="true">◔</span>Profil</button>
+    </nav>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

@@ -2,7 +2,6 @@ import { Chessground } from '@lichess-org/chessground';
 import type { Key } from '@lichess-org/chessground/types';
 import type { DrawShape } from '@lichess-org/chessground/draw';
 import '@lichess-org/chessground/assets/chessground.base.css';
-import '@lichess-org/chessground/assets/chessground.brown.css';
 import '@lichess-org/chessground/assets/chessground.cburnett.css';
 import './style.css';
 import { gameId, parsePgn, uciToSan, type Game } from './game';
@@ -538,6 +537,7 @@ function finishAnalysis(result: GameAnalysis) {
   analysis = result;
   $('analyse').textContent = `Réanalyser (profondeur ${result.depth})`;
   renderReport();
+  renderPlayers();
   if (current) show(current);
 }
 
@@ -572,7 +572,8 @@ function showOpening() {
   $('opening').textContent = name ?? '';
 }
 
-const KEY_MOMENTS: Classification[] = ['brilliant', 'great', 'miss', 'mistake', 'blunder'];
+/** Boutons « Erreur » : erreurs, ratés et gaffes (les imprécisions sont trop nombreuses pour sauter de l'une à l'autre). */
+const KEY_MOMENTS: Classification[] = ['miss', 'mistake', 'blunder'];
 
 function jumpKeyMoment(dir: 1 | -1) {
   if (!root || !current) return;
@@ -775,10 +776,30 @@ let profileCauses: ProfileStats['causes'] = [];
 function showView(view: 'analyse' | 'profil') {
   $('view-analyse').hidden = view !== 'analyse';
   $('view-profil').hidden = view !== 'profil';
-  $('tab-analyse').classList.toggle('active', view === 'analyse');
-  $('tab-profil').classList.toggle('active', view === 'profil');
+  for (const id of ['tab-analyse', 'bn-analyse']) $(id).classList.toggle('active', view === 'analyse');
+  for (const id of ['tab-profil', 'bn-profil']) $(id).classList.toggle('active', view === 'profil');
   if (view === 'profil') refreshProfile();
 }
+
+/** Noms des joueurs autour de l'échiquier (en bas : le camp vu de face), avec leur précision une fois analysé. */
+function renderPlayers() {
+  const h = game?.headers ?? {};
+  const line = (c: 'white' | 'black') => {
+    const name = (c === 'white' ? h.White : h.Black) || (c === 'white' ? 'Blancs' : 'Noirs');
+    const elo = c === 'white' ? h.WhiteElo : h.BlackElo;
+    const acc = analysis && !analysing ? (c === 'white' ? analysis.accuracy.white : analysis.accuracy.black) : undefined;
+    return (
+      `<span class="dot ${c}"></span><b>${esc(name)}</b>` +
+      (elo ? ` <span class="muted">${esc(elo)}</span>` : '') +
+      (acc !== undefined ? `<span class="acc" title="Précision">${acc.toFixed(1)}</span>` : '')
+    );
+  };
+  const bottom = board.state.orientation;
+  $('player-bottom').innerHTML = line(bottom);
+  $('player-top').innerHTML = line(bottom === 'white' ? 'black' : 'white');
+}
+
+const importDialog = () => $<HTMLDialogElement>('import-dialog');
 
 const profileUser = () => $<HTMLInputElement>('profile-user').value.trim();
 
@@ -842,45 +863,83 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[]) {
     const what = m.san ? `coup ${Math.ceil(m.ply / 2)} : ${esc(m.san)} (${LABELS[m.classification].name.toLowerCase()})` : `position gagnante au coup ${Math.ceil(m.ply / 2)}`;
     return `<li><button class="link" data-ex="${profileExamples.length - 1}">contre ${esc(m.opponent)} · ${what}</button></li>`;
   };
+  const maxCount = Math.max(1, ...s.causes.map((c) => c.count));
   const causes = s.causes
     .map((c, i) => {
       const label = c.tag === 'gache' ? 'Avantage gâché (position gagnante, partie non gagnée)' : TAGS[c.tag];
-      const share = c.tag === 'gache' ? `${pct((100 * c.count) / s.games.length)} des parties` : `${pct((100 * c.count) / s.totalMistakes)} des erreurs`;
+      const share = c.tag === 'gache' ? `${pct((100 * c.count) / s.games.length)} des parties` : pct((100 * c.count) / s.totalMistakes);
       const train = c.tag === 'gache' ? '' : `<button data-train="${i}">S'entraîner (${c.count} exercice${c.count > 1 ? 's' : ''})</button>`;
-      return `<details class="cause"><summary><b>${label}</b> <span class="muted">— ${c.count} · ${share}</span></summary>
+      return `<details class="cause"><summary><span class="cause-label">${label}</span><span class="bar"><span style="width:${(100 * c.count) / maxCount}%"></span></span><span class="muted cause-n">${c.count} · ${share}</span></summary>
         ${train}<ul class="examples">${c.examples.slice(-10).reverse().map(example).join('')}</ul></details>`;
     })
     .join('');
   const row = (cells: (string | number)[]) => `<tr>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
+
+  // Chiffres clés.
+  const n = s.games.length;
+  const kpi = (label: string, value: string, sub = '') =>
+    `<div class="kpi"><div class="muted">${label}</div><div class="kpi-v">${value}</div>${sub ? `<div class="muted kpi-s">${sub}</div>` : ''}</div>`;
+  const byColor = (c: 'w' | 'b') => (s.games.some((g) => g.color === c) ? s.accuracy[c].toFixed(1) : '—');
+  const blunders = s.games.flatMap((g) => g.mistakes).filter((m) => m.classification === 'blunder').length;
+  const kpis = `<div class="kpis wide">
+      ${kpi('Précision', s.accuracy.all.toFixed(1), `Blancs ${byColor('w')} · Noirs ${byColor('b')}`)}
+      ${kpi('Elo estimé', `~${estimateElo(s.accuracy.all)}`)}
+      ${kpi('Score', pct((100 * (s.record.win + s.record.draw / 2)) / n), `${s.record.win} V · ${s.record.draw} N · ${s.record.loss} D`)}
+      ${kpi('Gaffes par partie', (blunders / n).toFixed(1), `${n} parties en ${SPEEDS[profileSpeed].toLowerCase()}`)}
+    </div>`;
+
+  // Point faible n°1 : la cause la plus fréquente, avec la phase où elle revient le plus.
+  const PHASE_IN: Record<string, string> = { ouverture: 'ouverture', milieu: 'milieu de partie', finale: 'finale' };
+  // « Erreur de position » est la catégorie fourre-tout : on préfère une cause précise.
+  const top = s.causes.find((c) => c.tag !== 'gache' && c.tag !== 'position') ?? s.causes.find((c) => c.tag !== 'gache');
+  let weak = '';
+  if (top && top.tag !== 'gache') {
+    const phases = [...groupCount(top.examples.map((m) => m.phase))].sort((a, b) => b[1] - a[1]);
+    weak = `<section class="card wide weak">
+      <div><div class="weak-k">Ton point faible n°1</div><div class="weak-t">${TAGS[top.tag]}</div>
+      <div class="muted">${pct((100 * top.count) / s.totalMistakes)} de tes erreurs · surtout en ${PHASE_IN[phases[0][0]]}</div></div>
+      <button class="primary" data-train="${s.causes.indexOf(top)}">S'entraîner (${top.count})</button></section>`;
+  }
+
+  // Erreurs pour 100 coups par phase : vert pour la meilleure, rouge pour la pire.
+  const played = s.byPhase.filter((p) => p.moves).sort((a, b) => a.per100 - b.per100);
+  const tone = (p: (typeof played)[number]) =>
+    played.length < 2 ? '' : p === played[0] ? 'good' : p === played[played.length - 1] ? 'bad' : 'mid';
+  const pills = s.byPhase
+    .map((p) => `<div class="pill ${p.moves ? tone(p) : ''}"><div>${p.phase[0].toUpperCase() + p.phase.slice(1)}</div><b>${p.moves ? p.per100.toFixed(1) : '—'}</b></div>`)
+    .join('');
+
+  // Précision par mois : petite courbe.
+  const accs = s.byMonth.map((m) => m.accuracy);
+  const lo = Math.min(...accs) - 2;
+  const hi = Math.max(...accs) + 2;
+  const pts = s.byMonth.map((m, i) => `${(i / Math.max(1, accs.length - 1)) * 200},${60 - ((m.accuracy - lo) / (hi - lo)) * 56 - 2}`).join(' ');
+  const spark =
+    accs.length >= 2
+      ? `<svg class="spark" viewBox="0 0 200 60" preserveAspectRatio="none"><polyline points="${pts}" /></svg>
+         <div class="muted spark-l"><span>${esc(s.byMonth[0].month.replace('.', '-'))}</span><span>${esc(s.byMonth.at(-1)!.month.replace('.', '-'))} : ${accs.at(-1)!.toFixed(1)}</span></div>`
+      : `<p class="muted">Précision ${accs[0]?.toFixed(1) ?? '—'} sur ${esc(s.byMonth[0]?.month.replace('.', '-') ?? '')}. La courbe apparaît avec des parties sur au moins deux mois.</p>`;
+
   $('profile-summary').innerHTML = `
     ${speedBar}
+    ${kpis}
+    ${weak}
+    <section class="card wide">
+      <h2>Causes d'erreur</h2>
+      <p class="muted">${s.totalMistakes} erreurs retenues · ${LOSS_FILTERS.find(([v]) => v === profileMinLoss)![1]}. Clique sur une cause pour voir les exemples.</p>
+      ${causes}
+    </section>
     <section class="card">
-      <h2>Vue d'ensemble — ${SPEEDS[profileSpeed]}</h2>
-      <p><b>${s.games.length}</b> parties analysées en ${SPEEDS[profileSpeed].toLowerCase()} · ${s.record.win} victoires, ${s.record.draw} nulles, ${s.record.loss} défaites</p>
-      <table class="stats">
-        <tr><th>Précision moyenne</th><th>avec les Blancs</th><th>avec les Noirs</th></tr>
-        ${row([
-          s.accuracy.all.toFixed(1),
-          s.games.some((g) => g.color === 'w') ? s.accuracy.w.toFixed(1) : '—',
-          s.games.some((g) => g.color === 'b') ? s.accuracy.b.toFixed(1) : '—',
-        ])}
-      </table>
+      <h2>Erreurs pour 100 coups</h2>
+      <div class="pills">${pills}</div>
+    </section>
+    <section class="card">
+      <h2>Précision par mois</h2>
+      ${spark}
     </section>
     <section class="card">
       <h2>Points forts</h2>
       ${s.strengths.length ? `<ul>${s.strengths.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p class="muted">Pas encore assez de parties pour en dégager.</p>'}
-    </section>
-    <section class="card wide">
-      <h2>Erreurs les plus fréquentes</h2>
-      <p class="muted">${s.totalMistakes} erreurs retenues · ${LOSS_FILTERS.find(([v]) => v === profileMinLoss)![1]}. Une erreur peut avoir plusieurs causes.</p>
-      ${causes}
-    </section>
-    <section class="card">
-      <h2>Erreurs par phase de jeu</h2>
-      <table class="stats">
-        <tr><th>Phase</th><th>Coups joués</th><th>Erreurs</th><th>Pour 100 coups</th></tr>
-        ${s.byPhase.map((p) => row([p.phase, p.moves, p.mistakes, p.per100.toFixed(1)])).join('')}
-      </table>
     </section>
     <section class="card">
       <h2>Ouvertures</h2>
@@ -888,14 +947,14 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[]) {
         <tr><th>Ouverture</th><th>Parties</th><th>Points</th><th>Précision</th></tr>
         ${s.openings.map((o) => row([esc(o.name), o.games, pct(o.score), o.accuracy.toFixed(1)])).join('')}
       </table>
-    </section>
-    <section class="card">
-      <h2>Évolution</h2>
-      <table class="stats">
-        <tr><th>Mois</th><th>Parties</th><th>Précision</th></tr>
-        ${s.byMonth.map((m) => row([esc(m.month.replace('.', '-')), m.games, m.accuracy.toFixed(1)])).join('')}
-      </table>
     </section>`;
+}
+
+/** Nombre d'occurrences de chaque valeur. */
+function groupCount(xs: string[]): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const x of xs) m.set(x, (m.get(x) ?? 0) + 1);
+  return m;
 }
 
 $('profile-summary').addEventListener('change', (e) => {
@@ -1032,6 +1091,8 @@ function load(pgn: string) {
   });
   const h = g.headers;
   $('game-info').textContent = h.White ? `${h.White} – ${h.Black}${h.Result ? ` (${h.Result})` : ''}` : '';
+  importDialog().close();
+  renderPlayers();
   renderReport();
   renderMoves();
   show(root);
@@ -1092,7 +1153,11 @@ $('last').onclick = go.last;
 $('flip').onclick = () => {
   board.toggleOrientation();
   $('evalbar').classList.toggle('flipped', board.state.orientation === 'black');
+  renderPlayers();
 };
+$('open-import').onclick = $('bn-import').onclick = () => importDialog().showModal();
+$('bn-analyse').onclick = () => showView('analyse');
+$('bn-profil').onclick = () => showView('profil');
 $('engine-on').onchange = () => current && updateEngine(current);
 $('key-prev').onclick = () => jumpKeyMoment(-1);
 $('key-next').onclick = () => jumpKeyMoment(1);

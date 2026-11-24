@@ -659,3 +659,369 @@ select {
     flex-wrap: wrap;
   }
 }
+
+/* ===========================================================================
+   Design épuré : échiquier vert et crème, barre du haut, cartes sans relief.
+   =========================================================================== */
+:root {
+  --bg: #f6f6f3;
+  --border: #e4e4df;
+  --board-light: #ececd7;
+  --board-dark: #7d9a5b;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1c1d20;
+    --panel: #26272b;
+    --border: #34353a;
+  }
+}
+
+/* Échiquier (remplace le thème marron de chessground) */
+cg-board {
+  background-color: var(--board-light);
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8' shape-rendering='crispEdges'><defs><pattern id='p' width='2' height='2' patternUnits='userSpaceOnUse'><rect x='1' width='1' height='1' fill='%237d9a5b'/><rect y='1' width='1' height='1' fill='%237d9a5b'/></pattern></defs><rect width='8' height='8' fill='url(%23p)'/></svg>");
+}
+cg-board square.last-move {
+  background-color: rgba(245, 225, 90, 0.5);
+}
+cg-board square.selected {
+  background-color: rgba(20, 85, 30, 0.35);
+}
+cg-board square.move-dest {
+  background: radial-gradient(rgba(20, 60, 20, 0.3) 19%, rgba(0, 0, 0, 0) 20%);
+}
+cg-board square.oc.move-dest {
+  background: radial-gradient(transparent 0%, transparent 79%, rgba(20, 60, 20, 0.3) 80%);
+}
+cg-board square.move-dest:hover {
+  background: rgba(20, 85, 30, 0.25);
+}
+cg-board square.check {
+  background: radial-gradient(ellipse at center, rgba(230, 40, 40, 0.9) 0%, rgba(230, 40, 40, 0) 75%);
+}
+.orientation-white .ranks :nth-child(odd),
+.orientation-white .files :nth-child(even),
+.orientation-black .ranks :nth-child(even),
+.orientation-black .files :nth-child(odd) {
+  color: var(--board-light);
+}
+.orientation-white .ranks :nth-child(even),
+.orientation-white .files :nth-child(odd),
+.orientation-black .ranks :nth-child(odd),
+.orientation-black .files :nth-child(even) {
+  color: var(--board-dark);
+}
+.app {
+  /* + barre du haut et noms des joueurs autour de l'échiquier */
+  --board: clamp(320px, min(100vh - 360px, 100vw - 2 * var(--side) - 140px), 960px);
+}
+@media (max-width: 1150px) {
+  .app {
+    --board: clamp(300px, min(100vh - 290px, 100vw - var(--side) - 120px), 900px);
+  }
+}
+
+/* Boutons et cartes : plats, coins doux */
+button,
+label.button {
+  border-radius: 8px;
+  font-size: 15px;
+}
+button.primary {
+  font-weight: 600;
+}
+.card,
+.engine,
+.moves,
+.report table {
+  border-radius: 10px;
+}
+
+/* Barre du haut */
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  padding: 10px 24px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 17px;
+}
+.brand img {
+  border-radius: 6px;
+}
+.topbar .tabs {
+  padding: 0;
+  border: none;
+}
+.topbar .tab {
+  padding: 8px 12px;
+  border-bottom-width: 2px;
+}
+
+/* Fenêtre d'import */
+.import-dialog {
+  width: min(560px, calc(100vw - 32px));
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 0 20px 16px;
+  background: var(--panel);
+  color: var(--text);
+}
+.import-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+.dialog-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.dialog-head h2 {
+  font-size: 18px;
+}
+.dialog-head button {
+  border: none;
+  background: none;
+}
+.import-dialog h3 {
+  font-size: 14px;
+  margin: 16px 0 6px;
+  color: var(--muted);
+  font-weight: 600;
+}
+.import-dialog textarea {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+  font-family: monospace;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px;
+}
+
+/* Joueurs autour de l'échiquier */
+.player {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  margin-left: 32px;
+  font-size: 14px;
+}
+.dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  border: 1px solid #888;
+}
+.dot.white {
+  background: #f4f4f0;
+}
+.dot.black {
+  background: #2c2c2a;
+}
+.acc {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 6px;
+  background: var(--border);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Coup commenté : une barre de couleur, pas de cadre */
+.review {
+  background: none;
+  border: none;
+  border-left: 4px solid var(--c, var(--border));
+  border-radius: 0;
+  padding: 2px 0 2px 12px;
+}
+
+/* Tableau de bord du profil */
+.kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.kpi {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px;
+}
+.kpi-v {
+  font-size: 26px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+.kpi-s {
+  font-size: 12px;
+}
+.weak {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  border: 2px solid var(--accent);
+}
+.weak > div {
+  flex: 1;
+}
+.weak-k {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--accent);
+}
+.weak-t {
+  font-size: 18px;
+  font-weight: 700;
+  margin: 2px 0;
+}
+.cause summary {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto;
+  align-items: center;
+  gap: 12px;
+  list-style: none;
+}
+.cause summary::-webkit-details-marker {
+  display: none;
+}
+.cause-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+}
+.bar span {
+  display: block;
+  height: 100%;
+  background: #d9644a;
+}
+.cause-n {
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.pills {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.pill {
+  border-radius: 8px;
+  padding: 8px;
+  text-align: center;
+  background: var(--border);
+  font-size: 13px;
+}
+.pill b {
+  display: block;
+  font-size: 20px;
+}
+.pill.good {
+  background: #e3efd6;
+  color: #27500a;
+}
+.pill.mid {
+  background: #faeeda;
+  color: #633806;
+}
+.pill.bad {
+  background: #fcebeb;
+  color: #791f1f;
+}
+.spark {
+  width: 100%;
+  height: 70px;
+}
+.spark polyline {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2.5;
+  vector-effect: non-scaling-stroke;
+}
+.spark-l {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+}
+
+/* Navigation en bas : téléphone seulement */
+.bottom-nav {
+  display: none;
+}
+@media (max-width: 760px) {
+  .topbar {
+    padding: 8px 12px;
+  }
+  .topbar .tabs,
+  #open-import {
+    display: none;
+  }
+  .player {
+    margin-left: 32px;
+  }
+  body {
+    padding-bottom: 72px;
+  }
+  .bottom-nav {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: var(--panel);
+    border-top: 1px solid var(--border);
+    padding: 4px 0 calc(6px + env(safe-area-inset-bottom));
+    z-index: 10;
+  }
+  .bottom-nav button {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    border: none;
+    background: none;
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .bottom-nav button span {
+    font-size: 22px;
+    line-height: 1.1;
+  }
+  .bottom-nav button.active {
+    color: var(--accent);
+    font-weight: 600;
+  }
+  .weak {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+@media (max-width: 760px) {
+  /* Les boutons « Erreur » passent sur une seconde rangée, pleine largeur. */
+  .nav {
+    flex-wrap: wrap;
+  }
+  .nav button {
+    flex: 1 1 15%;
+  }
+  .nav #key-prev,
+  .nav #key-next {
+    flex: 1 1 40%;
+  }
+}
