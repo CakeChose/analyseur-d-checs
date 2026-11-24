@@ -888,7 +888,8 @@ button.primary {
 }
 .cause summary {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) auto;
+  /* Colonne de droite à largeur fixe : chaque ligne a sa propre grille, sinon les barres se décalent. */
+  grid-template-columns: minmax(0, 2fr) minmax(0, 3fr) 11rem;
   align-items: center;
   gap: 12px;
   list-style: none;
@@ -913,6 +914,8 @@ button.primary {
   background: #d9644a;
 }
 .cause-n {
+  text-align: right;
+  white-space: nowrap;
   font-size: 13px;
   font-variant-numeric: tabular-nums;
 }
