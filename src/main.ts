@@ -48,7 +48,31 @@ const board = Chessground($('board'), {
   premovable: { enabled: false },
 });
 const engine = new Engine();
-const LIVE_DEPTH = 18;
+/** Téléphone ou tablette : moins de cœurs, ça chauffe → analyses moins profondes. */
+const MOBILE = matchMedia('(pointer: coarse)').matches;
+const LIVE_DEPTH = MOBILE ? 14 : 18;
+if (MOBILE) $<HTMLSelectElement>('depth').value = '12';
+
+// Téléphone : glisser le doigt sur l'échiquier (ailleurs que sur une pièce) pour changer de coup.
+let touchX = 0;
+let touchY = 0;
+let touchOnPiece = false;
+$('board').addEventListener(
+  'touchstart',
+  (e) => {
+    touchX = e.touches[0].clientX;
+    touchY = e.touches[0].clientY;
+    touchOnPiece = (e.target as HTMLElement).tagName === 'PIECE';
+  },
+  { passive: true },
+);
+$('board').addEventListener('touchend', (e) => {
+  const dx = e.changedTouches[0].clientX - touchX;
+  const dy = e.changedTouches[0].clientY - touchY;
+  if (touchOnPiece || Math.abs(dx) < 50 || Math.abs(dx) < 2 * Math.abs(dy)) return;
+  if (dx < 0) go.next();
+  else go.prev();
+});
 
 let game: Game | null = null;
 let root: TreeNode | null = null;
@@ -740,7 +764,7 @@ async function searchOnline() {
 // ---------------------------------------------------------------------------
 
 /** Profondeur de l'analyse en lot : 3 à 4 fois plus rapide que 16, suffisant pour repérer les erreurs. */
-const PROFILE_DEPTH = 12;
+const PROFILE_DEPTH = MOBILE ? 10 : 12;
 const USER_KEY = 'profil-pseudo';
 let profileRunning = false;
 let profileStop = false;
@@ -835,7 +859,11 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[]) {
       <p><b>${s.games.length}</b> parties analysées en ${SPEEDS[profileSpeed].toLowerCase()} · ${s.record.win} victoires, ${s.record.draw} nulles, ${s.record.loss} défaites</p>
       <table class="stats">
         <tr><th>Précision moyenne</th><th>avec les Blancs</th><th>avec les Noirs</th></tr>
-        ${row([s.accuracy.all.toFixed(1), s.accuracy.w.toFixed(1), s.accuracy.b.toFixed(1)])}
+        ${row([
+          s.accuracy.all.toFixed(1),
+          s.games.some((g) => g.color === 'w') ? s.accuracy.w.toFixed(1) : '—',
+          s.games.some((g) => g.color === 'b') ? s.accuracy.b.toFixed(1) : '—',
+        ])}
       </table>
     </section>
     <section class="card">
@@ -909,6 +937,8 @@ async function runProfile() {
   const engines = Math.max(1, Number($<HTMLInputElement>('profile-engines').value) || 1);
   status.textContent = 'Récupération des parties sur chess.com…';
   $('profile-progress').hidden = false;
+  // Garde l'écran allumé : un navigateur mobile suspend la page quand l'écran s'éteint.
+  const wakeLock = await navigator.wakeLock?.request('screen').catch(() => undefined);
   try {
     await loadBook();
     const res = await analyseProfile(
@@ -930,6 +960,7 @@ async function runProfile() {
   } catch (e) {
     status.textContent = `Impossible d'analyser le profil : ${(e as Error).message}.`;
   } finally {
+    wakeLock?.release();
     profileRunning = false;
     $('profile-run').hidden = false;
     $('profile-stop').hidden = true;
@@ -1046,8 +1077,13 @@ try {
 } catch {
   /* stockage indisponible */
 }
-// Un moteur par cœur, en laissant un cœur à la page (8 au plus par défaut).
-$<HTMLInputElement>('profile-engines').value = String(Math.min(8, Math.max(1, (navigator.hardwareConcurrency || 2) - 1)));
+// Un moteur par cœur, en laissant un cœur à la page (8 au plus par défaut, 2 sur téléphone).
+$<HTMLInputElement>('profile-engines').value = String(Math.min(MOBILE ? 2 : 8, Math.max(1, (navigator.hardwareConcurrency || 2) - 1)));
+
+// Version installée / hors ligne (pas en développement : le cache gênerait le rechargement à chaud).
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`);
+}
 $('analyse').onclick = runAnalysis;
 $('first').onclick = go.first;
 $('prev').onclick = go.prev;

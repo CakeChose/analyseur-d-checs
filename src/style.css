@@ -616,3 +616,46 @@ select {
   color: #c0392b;
   margin: 4px 0 0;
 }
+
+/* Téléphone (règles en fin de fichier pour l'emporter) : échiquier en pleine largeur,
+   boutons assez grands pour le doigt (44 px), rien qui déborde. */
+@media (max-width: 760px) {
+  .app {
+    --board: calc(100vw - 56px);
+    gap: 12px;
+  }
+  button,
+  select,
+  label.button {
+    min-height: 44px;
+  }
+  .nav button {
+    flex: 1 1 0;
+    padding: 6px 0;
+  }
+  .hint {
+    display: none;
+  }
+  .tabs {
+    padding: 8px 12px 0;
+  }
+  .profile {
+    padding: 12px;
+  }
+  .profile-grid {
+    grid-template-columns: 1fr;
+  }
+  .card {
+    overflow-x: auto;
+  }
+  .profile-form label:not(.button) {
+    flex: 1 1 40%;
+  }
+  label.button {
+    display: inline-flex;
+    align-items: center;
+  }
+  .speed-bar {
+    flex-wrap: wrap;
+  }
+}

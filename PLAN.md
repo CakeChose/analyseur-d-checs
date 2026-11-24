@@ -130,7 +130,7 @@ https://cakechose.github.io/analyseur-d-checs/**
 6. ~~Bonus : import chess.com/Lichess, coups de livre, mode Réessayer, moments clés.~~
 7. ~~Mise en ligne : GitHub Pages, déploiement automatique.~~
 8. ~~Profil du joueur : analyse en lot des parties chess.com, synthèse des forces et faiblesses, exercices ciblés (voir ci-dessous).~~
-9. Version mobile : interface adaptée au téléphone + appli installable (PWA) (voir ci-dessous).
+9. ~~Version mobile : interface adaptée au téléphone + appli installable (PWA) (voir ci-dessous).~~
 
 ## Phase 8 : profil du joueur — fait (onglet « Mon profil », `src/profile.ts`)
 Non fait : enfilade et attaque à la découverte, problèmes de la base Lichess, vrais comptes.
@@ -222,7 +222,8 @@ et en tirer une synthèse de ses erreurs les plus fréquentes, puis des exercice
   Mieux vaut quelques catégories fiables que beaucoup de catégories approximatives.
 - Données locales : vider le navigateur efface le profil → l'export de fichier est important.
 
-## Phase 9 : version mobile (à faire)
+## Phase 9 : version mobile — fait
+Non fait : panneaux repliables (la page s'empile simplement, la liste des coups défile), test sur de vrais téléphones.
 
 Objectif : un site agréable sur téléphone, installable comme une appli, sans passer par les magasins.
 
@@ -239,11 +240,13 @@ Objectif : un site agréable sur téléphone, installable comme une appli, sans 
 - Manifeste (nom, icônes, couleurs, plein écran) : icône sur l'écran d'accueil.
 - Service worker qui garde le site en cache : fonctionnement hors ligne (tout tourne déjà dans
   le navigateur ; seul l'import chess.com / Lichess demande le réseau).
-- Mise à jour : prévenir quand une nouvelle version est disponible.
+- Mise à jour : pas de message ; les pages sont demandées au réseau d'abord, donc la dernière version
+  s'affiche dès qu'on est en ligne (public/sw.js). Icônes : public/icon-*.png.
 
 ### 9.3 Réglages adaptés au mobile
 - Profondeur et nombre de moteurs plus faibles par défaut sur téléphone (moins de cœurs, chauffe,
-  batterie) : ex. profondeur 10, 2 moteurs.
+  batterie) : sur écran tactile, analyse en direct à 14, analyse de partie à 12, profil à 10,
+  2 moteurs (détection : pointer: coarse).
 - Garder l'écran allumé pendant l'analyse en lot (API Wake Lock) : les navigateurs mobiles
   suspendent une page en arrière-plan ; la reprise automatique existe déjà.
 
