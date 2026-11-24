@@ -13,12 +13,8 @@
   <body>
     <header class="topbar">
       <span class="brand"><img src="/icon-192.png" alt="" width="26" height="26" />Analyseur</span>
-      <nav class="tabs">
-        <button id="tab-analyse" class="tab active">Analyse</button>
-        <button id="tab-profil" class="tab">Profil</button>
-      </nav>
       <span class="spacer"></span>
-      <button id="open-import" class="primary">Importer une partie</button>
+      <button id="go-profile" class="primary">Profil</button>
     </header>
 
     <!-- Fenêtre d'import : parties en ligne ou PGN collé -->
@@ -47,113 +43,144 @@
         <p id="error" class="error"></p>
       </section>
     </dialog>
+    <input id="restore-file" type="file" accept=".json,application/json" hidden />
 
-    <!-- Page profil : analyse en lot des parties chess.com et synthèse -->
-    <main id="view-profil" class="profile" hidden>
-      <section class="card wide profile-form">
-        <label>Pseudo chess.com <input id="profile-user" type="text" autocomplete="off" /></label>
-        <label
-          >Parties
-          <select id="profile-count">
-            <option>20</option>
-            <option selected>50</option>
-            <option>100</option>
-          </select>
-        </label>
-        <label
-          >Cadence
-          <select id="profile-speed">
-            <option value="">Toutes</option>
-            <option value="bullet">Bullet</option>
-            <option value="blitz">Blitz</option>
-            <option value="rapid">Rapide</option>
-            <option value="daily">Par jour</option>
-          </select>
-        </label>
-        <label title="Un moteur par cœur du processeur va plus vite, mais l'ordi chauffe davantage"
-          >Moteurs <input id="profile-engines" type="number" min="1" max="16"
-        /></label>
-        <button id="profile-run" class="primary">Analyser mes parties</button>
-        <button id="profile-stop" hidden>Pause</button>
-        <span class="spacer"></span>
-        <button id="profile-export" title="Télécharger un fichier avec toutes les analyses">Exporter</button>
-        <label class="button" title="Ajouter les analyses d'un fichier exporté"
-          >Importer <input id="profile-import" type="file" accept=".json,application/json" hidden
-        /></label>
-      </section>
-      <div id="profile-progress" class="progress wide" hidden><div id="profile-progress-fill"></div></div>
-      <p id="profile-status" class="muted wide"></p>
-      <div id="profile-summary" class="profile-grid"></div>
+    <!-- Accueil : une seule fois, pour démarrer -->
+    <main id="view-accueil" class="home" hidden>
+      <h1>Analyse tes parties d'échecs</h1>
+      <p class="muted">Gratuit, dans ton navigateur, avec Stockfish.</p>
+      <div class="home-choices">
+        <form id="home-form" class="card home-card">
+          <h2>Entrer mon pseudo chess.com</h2>
+          <p class="muted">Tes dernières parties, tes statistiques et tes points à travailler.</p>
+          <input id="home-user" type="text" placeholder="Pseudo chess.com" autocomplete="off" required />
+          <button class="primary">Voir mon profil</button>
+        </form>
+        <div class="card home-card">
+          <h2>Importer une partie</h2>
+          <p class="muted">Une partie chess.com, Lichess ou un PGN, sans créer de profil.</p>
+          <button id="home-import">Importer une partie</button>
+        </div>
+      </div>
+      <button id="home-restore" class="link">J'ai un fichier d'analyses</button>
+      <p id="home-status" class="muted"></p>
     </main>
 
-    <main id="view-analyse" class="app">
-      <!-- Colonne de gauche : la partie, l'analyse, le bilan -->
-      <section class="game-col">
-        <div>
-          <div id="game-info" class="game-info"></div>
-          <div id="opening" class="muted"></div>
-        </div>
-        <div class="analyse-bar">
-          <button id="analyse" class="primary">Analyser la partie</button>
-          <label class="muted"
-            >Profondeur
-            <select id="depth">
-              <option value="12">12 (rapide)</option>
-              <option value="16" selected>16</option>
-              <option value="20">20 (précis)</option>
-            </select>
-          </label>
-        </div>
-        <div id="progress" class="progress" hidden><div id="progress-fill"></div></div>
-        <div id="report" class="report" hidden></div>
-      </section>
+    <div id="layout" class="layout">
+      <!-- Colonne de gauche commune au profil et à la vue d'une partie -->
+      <aside class="games-col">
+        <details id="games-panel" class="games-panel" open>
+          <summary>Dernières parties</summary>
+          <p id="games-status" class="muted"></p>
+          <ul id="games-list" class="games-list"></ul>
+        </details>
+      </aside>
 
-      <!-- Colonne centrale : l'échiquier, encadré par les deux joueurs -->
-      <section class="board-col">
-        <div id="player-top" class="player"></div>
-        <div class="board-row">
-          <div id="evalbar" class="evalbar" title="Évaluation">
-            <div id="evalbar-fill" class="evalbar-fill"></div>
-            <span id="evalbar-text" class="evalbar-text"></span>
+      <!-- Page profil : statistiques à lire au milieu, à travailler à droite -->
+      <div id="view-profil" class="profile" hidden>
+        <section class="profile-head">
+          <div>
+            <h1 id="profile-name"></h1>
+            <button id="change-profile" class="link">Changer de profil</button>
           </div>
-          <div id="board" class="board"></div>
+          <span class="spacer"></span>
+          <button id="profile-open-import">Importer une partie</button>
+          <button id="profile-run" class="primary">Analyser toutes les parties</button>
+          <button id="profile-stop" hidden>Pause</button>
+          <details class="profile-settings">
+            <summary title="Réglages et sauvegarde">⋯</summary>
+            <div class="settings-pop">
+              <label
+                >Parties
+                <select id="profile-count">
+                  <option>20</option>
+                  <option selected>50</option>
+                  <option>100</option>
+                </select>
+              </label>
+              <label
+                >Cadence
+                <select id="profile-speed">
+                  <option value="">Toutes</option>
+                  <option value="bullet">Bullet</option>
+                  <option value="blitz">Blitz</option>
+                  <option value="rapid">Rapide</option>
+                  <option value="daily">Par jour</option>
+                </select>
+              </label>
+              <label title="Un moteur par cœur du processeur va plus vite, mais l'ordi chauffe davantage"
+                >Moteurs <input id="profile-engines" type="number" min="1" max="16"
+              /></label>
+              <button id="profile-export" title="Télécharger un fichier avec toutes les analyses">Exporter mes analyses</button>
+              <button id="profile-restore" title="Ajouter les analyses d'un fichier exporté">Restaurer mes analyses</button>
+            </div>
+          </details>
+        </section>
+        <div id="profile-progress" class="progress" hidden><div id="profile-progress-fill"></div></div>
+        <p id="profile-status" class="muted"></p>
+        <div class="profile-cols">
+          <div id="profile-main" class="profile-main"></div>
+          <div id="profile-side" class="profile-side"></div>
         </div>
-        <div id="player-bottom" class="player"></div>
-        <div class="nav">
-          <button id="first" title="Début (Origine)" aria-label="Début">⏮</button>
-          <button id="prev" title="Coup précédent (←)" aria-label="Coup précédent">◀</button>
-          <button id="next" title="Coup suivant (→)" aria-label="Coup suivant">▶</button>
-          <button id="last" title="Fin" aria-label="Fin">⏭</button>
-          <button id="flip" title="Retourner l'échiquier" aria-label="Retourner l'échiquier">⇅</button>
-          <button id="key-prev" title="Erreur précédente (imprécisions exclues)">‹ Erreur</button>
-          <button id="key-next" title="Erreur suivante (imprécisions exclues)">Erreur ›</button>
-        </div>
-        <p class="hint muted">
-          Joue un coup sur l'échiquier pour essayer une variante · ↑ pour revenir à la partie
-        </p>
-        <div id="graph" class="graph"></div>
-      </section>
+      </div>
 
-      <!-- Colonne de droite : le coup, le moteur, la liste des coups -->
-      <section class="side-col">
-        <div id="review" class="review" hidden></div>
-        <div class="engine">
-          <label class="engine-head">
-            <input type="checkbox" id="engine-on" checked />
-            Stockfish 19 <span id="engine-status" class="muted"></span>
-          </label>
-          <ol id="engine-lines" class="engine-lines"></ol>
-        </div>
-        <div id="moves" class="moves"></div>
-      </section>
-    </main>
+      <!-- Vue d'une partie -->
+      <div id="view-analyse" class="app" hidden>
+        <section class="board-col">
+          <div id="player-top" class="player"></div>
+          <div class="board-row">
+            <div id="evalbar" class="evalbar" title="Évaluation">
+              <div id="evalbar-fill" class="evalbar-fill"></div>
+              <span id="evalbar-text" class="evalbar-text"></span>
+            </div>
+            <div id="board" class="board"></div>
+          </div>
+          <div id="player-bottom" class="player"></div>
+          <div class="nav">
+            <button id="first" title="Début (Origine)" aria-label="Début">⏮</button>
+            <button id="prev" title="Coup précédent (←)" aria-label="Coup précédent">◀</button>
+            <button id="next" title="Coup suivant (→)" aria-label="Coup suivant">▶</button>
+            <button id="last" title="Fin" aria-label="Fin">⏭</button>
+            <button id="flip" title="Retourner l'échiquier" aria-label="Retourner l'échiquier">⇅</button>
+            <button id="key-prev" title="Erreur précédente (imprécisions exclues)">‹ Erreur</button>
+            <button id="key-next" title="Erreur suivante (imprécisions exclues)">Erreur ›</button>
+          </div>
+          <p class="hint muted">
+            Joue un coup sur l'échiquier pour essayer une variante · ↑ pour revenir à la partie
+          </p>
+          <div id="graph" class="graph"></div>
+          <div id="report" class="report" hidden></div>
+        </section>
 
-    <!-- Téléphone : navigation en bas, à portée du pouce -->
-    <nav class="bottom-nav">
-      <button id="bn-analyse" class="active"><span aria-hidden="true">♞</span>Analyse</button>
-      <button id="bn-import"><span aria-hidden="true">⤓</span>Importer</button>
-      <button id="bn-profil"><span aria-hidden="true">◔</span>Profil</button>
-    </nav>
+        <section class="side-col">
+          <div>
+            <div id="game-info" class="game-info"></div>
+            <div id="opening" class="muted"></div>
+          </div>
+          <div class="analyse-bar">
+            <button id="analyse" class="primary">Analyser la partie</button>
+            <label class="muted"
+              >Profondeur
+              <select id="depth">
+                <option value="12">12 (rapide)</option>
+                <option value="16" selected>16</option>
+                <option value="20">20 (précis)</option>
+              </select>
+            </label>
+          </div>
+          <div id="progress" class="progress" hidden><div id="progress-fill"></div></div>
+          <div id="review" class="review" hidden></div>
+          <div class="engine">
+            <label class="engine-head">
+              <input type="checkbox" id="engine-on" checked />
+              Stockfish 19 <span id="engine-status" class="muted"></span>
+            </label>
+            <ol id="engine-lines" class="engine-lines"></ol>
+          </div>
+          <div id="moves" class="moves"></div>
+        </section>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

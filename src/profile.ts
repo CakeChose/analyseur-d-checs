@@ -166,6 +166,8 @@ export interface GameSummary {
   opponent: string;
   result: 'win' | 'draw' | 'loss';
   speed: string;
+  /** "2026.11.23 18:04:12" : pour trier les parties dans l'ordre où elles ont été jouées. */
+  date: string;
   /** "2026.11" */
   month: string;
   opening: string;
@@ -213,6 +215,7 @@ export function summarize(fiche: Fiche, username: string): GameSummary | null {
     opponent: (color === 'w' ? h.Black : h.White) ?? '?',
     result: h.Result === '1/2-1/2' ? 'draw' : (h.Result === '1-0') === (color === 'w') ? 'win' : 'loss',
     speed: speedOf(h.TimeControl),
+    date: `${h.UTCDate ?? h.Date ?? ''} ${h.UTCTime ?? ''}`,
     month: (h.Date ?? '').slice(0, 7),
     opening: '',
     accuracy: color === 'w' ? analysis.accuracy.white : analysis.accuracy.black,

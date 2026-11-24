@@ -270,6 +270,64 @@ Objectif : un site agréable sur téléphone, installable comme une appli, sans 
 - Téléphone : barre de navigation en bas (Analyse, Importer, Profil).
 - Non fait : onglets Coups / Moteur / Bilan sous l'échiquier sur téléphone.
 
+## Phase 10 : un site organisé autour du profil — squelette fait (10.1 à 10.4), apprentissage à faire (10.5)
+
+Objectif : un accueil qui sert une seule fois, puis tout tourne autour de la page profil.
+On construit d'abord le **squelette** (10.1 à 10.4), puis les **pages d'apprentissage** (10.5).
+
+### 10.1 Accueil (une seule fois)
+- Deux grands choix : **« Entrer mon pseudo chess.com »** (→ profil) ou **« Importer une partie »**
+  (→ fenêtre d'import, puis vue de la partie).
+- On n'y revient plus : le pseudo est retenu et les visites suivantes ouvrent directement le profil.
+  (Sans pseudo, après un import seul, on retombe sur l'accueil à la visite suivante.)
+- Plus de partie d'exemple (Morphy) chargée au démarrage.
+- Petit lien **« J'ai un fichier d'analyses »** : sur un nouvel appareil, restaure tout d'un coup ; le pseudo
+  est dans le fichier, donc on arrive directement sur son profil.
+
+### 10.2 Navigation
+- **Toutes les pages ont un bouton « Profil »** toujours visible (barre du haut ; barre du bas sur téléphone)
+  qui ramène à la page profil.
+- Le bouton « Importer une partie » est sur la page profil.
+
+### 10.3 Page profil (page principale) — trois colonnes
+- **Gauche : dernières parties** (chess.com, ~50), la même colonne que sur la vue d'une partie.
+  Chaque ligne : adversaire et son Elo, date, cadence, **précision** (ou « — » si non analysée),
+  et une **pastille verte / rouge / grise** pour victoire / défaite / nulle. Clic → vue de la partie.
+- **Milieu : statistiques générales** (à lire) : précision moyenne, bilan victoires / nulles / défaites,
+  **graphe de l'Elo** (tiré des en-têtes WhiteElo / BlackElo des parties récupérées),
+  **graphe de la précision** partie par partie, boutons de cadence.
+- **Droite : statistiques cliquables** (à travailler), en cartes courtes : erreurs les plus commises,
+  ouvertures les plus jouées, avantage gâché… Dans le squelette, elles mènent aux vues actuelles
+  (détail des causes, exercices « S'entraîner ») ; ensuite, vers les pages d'apprentissage (10.5).
+- En haut : pseudo, « Importer une partie », « Analyser toutes les parties », **« Exporter mes analyses »** et
+  **« Restaurer mes analyses »** (noms distincts pour ne pas confondre avec l'import d'une partie).
+- Liste gardée en cache ~1 h pour ne pas interroger chess.com à chaque visite.
+- Téléphone : stats générales → cartes cliquables → liste des parties.
+
+### 10.4 Vue d'une partie
+- **Gauche : la même liste des dernières parties** (partie ouverte surlignée) pour changer de partie.
+- Milieu : échiquier ; droite : commentaire du coup, moteur, coups (comme aujourd'hui).
+- **Le joueur du profil (ou le pseudo recherché à l'import) est toujours en bas de l'échiquier**,
+  qu'il joue les Blancs ou les Noirs.
+- Bouton « Analyser la partie » ; les coups se regardent avant l'analyse.
+- Téléphone : la liste des parties dans un volet repliable, l'échiquier reste en haut.
+
+### 10.5 Pages d'apprentissage (après le squelette)
+- **Ouvertures** (depuis la carte « ouvertures ») : tes ouvertures avec les Blancs / les Noirs,
+  score, précision, où tu sors de la théorie ; **explorateur** (coups de livre de la base d'ouvertures +
+  3 meilleurs coups de Stockfish avec leurs lignes) ; **entraînement** (le site joue l'adversaire, tu dois
+  trouver un coup de livre ou un des meilleurs coups).
+- **Problèmes** (depuis la carte « erreurs ») : exercices tirés de tes erreurs, par type
+  (pièce en prise, fourchette, mat manqué…), avec suivi de réussite.
+- D'autres pages pourront suivre le même modèle (finales, gestion du temps…).
+
+### Risques de la phase 10
+- L'API chess.com limite le nombre de requêtes : cache de la liste des parties, chargement mois par mois.
+- L'Elo n'est connu que pour les parties récupérées (pas d'historique complet sans plus d'appels).
+- La base d'ouvertures donne des positions nommées, pas des statistiques de popularité :
+  « coups de livre » oui, « coup le plus joué au monde » non (il faudrait l'explorateur Lichess).
+- C'est une réorganisation importante de `main.ts` : à découper en pages (accueil, profil, partie,
+  apprentissage) pour rester lisible.
 ## Pistes pour la suite
 - Calibrer les seuils (surtout Brillant et Seul coup) sur des parties analysées par chess.com.
 - Choix de la pièce lors d'une promotion (aujourd'hui : dame automatique).

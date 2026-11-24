@@ -5,6 +5,8 @@
 export interface OnlineGame {
   white: string;
   black: string;
+  whiteElo?: number;
+  blackElo?: number;
   /** "1-0", "0-1" ou "½-½" */
   result: string;
   date: Date;
@@ -33,6 +35,8 @@ export async function fetchChessCom(user: string, max = MAX, speed?: string): Pr
       games.push({
         white: g.white.username,
         black: g.black.username,
+        whiteElo: g.white.rating,
+        blackElo: g.black.rating,
         result: w === 1 ? '1-0' : w === 0.5 ? '½-½' : '0-1',
         date: new Date(g.end_time * 1000),
         speed: g.time_class,
@@ -61,6 +65,8 @@ export async function fetchLichess(user: string): Promise<OnlineGame[]> {
     .map((g) => ({
       white: g.players.white.user?.name ?? 'Anonyme',
       black: g.players.black.user?.name ?? 'Anonyme',
+      whiteElo: g.players.white.rating,
+      blackElo: g.players.black.rating,
       result: g.winner === 'white' ? '1-0' : g.winner === 'black' ? '0-1' : '½-½',
       date: new Date(g.createdAt),
       speed: g.speed,

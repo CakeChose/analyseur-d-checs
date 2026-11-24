@@ -37,7 +37,7 @@ import {
 import { winPercent } from './winprob';
 import { explainMove } from './explain';
 import { loadBook, openingName } from './openings';
-import { fetchChessCom, fetchLichess } from './import';
+import { fetchChessCom, fetchLichess, type OnlineGame } from './import';
 
 const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
 
@@ -642,7 +642,7 @@ async function showPuzzle() {
 function startPuzzleQueue(queue: { id: string; ply: number }[]) {
   if (!queue.length) return false;
   puzzle = { queue, index: 0, state: 'try' };
-  showView('analyse');
+  showView('partie');
   showPuzzle();
   return true;
 }
@@ -750,7 +750,7 @@ async function searchOnline() {
       b.textContent = `${g.white} – ${g.black}  ${g.result}  ·  ${g.speed}  ·  ${g.date.toLocaleDateString('fr-FR')}`;
       b.onclick = () => {
         $<HTMLTextAreaElement>('pgn').value = g.pgn;
-        load(g.pgn);
+        load(g.pgn, user);
       };
       li.append(b);
       list.append(li);
@@ -773,12 +773,19 @@ let profileStop = false;
 let profileExamples: MistakeRecord[] = [];
 let profileCauses: ProfileStats['causes'] = [];
 
-function showView(view: 'analyse' | 'profil') {
-  $('view-analyse').hidden = view !== 'analyse';
+type View = 'accueil' | 'profil' | 'partie';
+
+function showView(view: View) {
+  $('view-accueil').hidden = view !== 'accueil';
+  $('layout').hidden = view === 'accueil';
   $('view-profil').hidden = view !== 'profil';
-  for (const id of ['tab-analyse', 'bn-analyse']) $(id).classList.toggle('active', view === 'analyse');
-  for (const id of ['tab-profil', 'bn-profil']) $(id).classList.toggle('active', view === 'profil');
+  $('view-analyse').hidden = view !== 'partie';
+  $('go-profile').hidden = view === 'accueil';
+  document.body.dataset.view = view;
+  // Téléphone : sur une partie, la liste se replie pour garder l'échiquier en haut.
+  if (matchMedia('(max-width: 760px)').matches) $<HTMLDetailsElement>('games-panel').open = view === 'profil';
   if (view === 'profil') refreshProfile();
+  if (view === 'accueil') $<HTMLInputElement>('home-user').value = profileName;
 }
 
 /** Noms des joueurs autour de l'échiquier (en bas : le camp vu de face), avec leur précision une fois analysé. */
@@ -801,9 +808,12 @@ function renderPlayers() {
 
 const importDialog = () => $<HTMLDialogElement>('import-dialog');
 
-const profileUser = () => $<HTMLInputElement>('profile-user').value.trim();
+/** Pseudo chess.com du profil (retenu dans le navigateur). */
+let profileName = '';
+const profileUser = () => profileName;
 
 function saveUser(user: string) {
+  profileName = user;
   try {
     localStorage.setItem(USER_KEY, user);
   } catch {
@@ -811,23 +821,102 @@ function saveUser(user: string) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Liste des dernières parties (colonne de gauche, commune au profil et à la partie)
+// ---------------------------------------------------------------------------
+
+/** Dernières parties chess.com du profil (les plus récentes d'abord). */
+let listGames: OnlineGame[] = [];
+/** Précision du joueur dans chaque partie analysée, par identifiant de partie. */
+let accById = new Map<string, number>();
+
+/** Identifiant d'une partie chess.com d'après son PGN (le même que gameId). */
+const linkOf = (pgn: string) => pgn.match(/\[Link "([^"]+)"\]/)?.[1] ?? '';
+
+/** Les parties sont gardées 1 h dans le navigateur pour ne pas interroger chess.com à chaque visite. */
+async function loadGames(user: string, force = false): Promise<OnlineGame[]> {
+  const key = `parties:${user.toLowerCase()}`;
+  try {
+    const cached = JSON.parse(localStorage.getItem(key) ?? 'null');
+    if (!force && cached && Date.now() - cached.at < 3600_000) {
+      return cached.games.map((g: OnlineGame) => ({ ...g, date: new Date(g.date) }));
+    }
+  } catch {
+    /* cache illisible : on recharge */
+  }
+  const games = await fetchChessCom(user, 50);
+  try {
+    localStorage.setItem(key, JSON.stringify({ at: Date.now(), games }));
+  } catch {
+    /* stockage plein : tant pis pour le cache */
+  }
+  return games;
+}
+
+/** Résultat d'une partie du point de vue du joueur du profil. */
+function resultFor(g: OnlineGame): 'win' | 'loss' | 'draw' {
+  if (g.result === '½-½') return 'draw';
+  const white = g.white.toLowerCase() === profileName.toLowerCase();
+  return (g.result === '1-0') === white ? 'win' : 'loss';
+}
+
+function renderGamesList() {
+  const u = profileName.toLowerCase();
+  const cur = game ? gameId(game) : '';
+  $('games-list').innerHTML = listGames
+    .map((g, i) => {
+      const white = g.white.toLowerCase() === u;
+      const opp = white ? g.black : g.white;
+      const oppElo = white ? g.blackElo : g.whiteElo;
+      const id = linkOf(g.pgn);
+      const acc = accById.get(id);
+      const res = resultFor(g);
+      return `<li><button class="game-row ${id && id === cur ? 'current' : ''}" data-gi="${i}" title="${RESULT_LABEL[res]}">
+        <span class="res ${res}"></span>
+        <span class="gr-main"><b>${esc(opp)}</b>${oppElo ? ` <span class="muted">${oppElo}</span>` : ''}
+          <span class="muted gr-sub">${g.date.toLocaleDateString('fr-FR')} · ${SPEEDS[g.speed] ?? esc(g.speed)}</span></span>
+        <span class="gr-acc" title="Précision">${acc !== undefined ? acc.toFixed(0) : '—'}</span></button></li>`;
+    })
+    .join('');
+}
+const RESULT_LABEL = { win: 'Victoire', loss: 'Défaite', draw: 'Nulle' };
+
+$('games-list').addEventListener('click', async (e) => {
+  const b = (e.target as HTMLElement).closest<HTMLElement>('[data-gi]');
+  if (!b) return;
+  const g = listGames[Number(b.dataset.gi)];
+  const f = await cacheGet<Fiche>(linkOf(g.pgn));
+  if (f) await openFiche(f);
+  else load(g.pgn);
+});
+
+// ---------------------------------------------------------------------------
+// Page profil
+// ---------------------------------------------------------------------------
+
 async function refreshProfile() {
-  const user = profileUser();
-  const el = $('profile-summary');
-  if (!user) {
-    el.innerHTML = '<p class="muted">Indique ton pseudo chess.com pour voir ton profil.</p>';
-    return;
-  }
+  const user = profileName;
+  if (!user) return showView('accueil');
+  $('profile-name').textContent = user;
   await loadBook();
-  const games = await loadProfile(user);
-  if (!games.length) {
-    el.innerHTML = `<p class="muted">Aucune partie analysée pour ${esc(user)}. Lance « Analyser mes parties ».</p>`;
-    return;
+  if (!listGames.length) $('games-status').textContent = 'Chargement des parties…';
+  try {
+    listGames = await loadGames(user);
+    $('games-status').textContent = listGames.length ? '' : 'Aucune partie trouvée sur chess.com.';
+  } catch (e) {
+    $('games-status').textContent = `Impossible de récupérer les parties : ${(e as Error).message}.`;
   }
+  const summaries = await loadProfile(user);
+  accById = new Map(summaries.map((s) => [s.id, s.accuracy]));
+  renderGamesList();
   // Une synthèse par cadence : on ne mélange pas bullet et rapide.
-  const counts = SPEED_ORDER.map((sp) => [sp, games.filter((g) => g.speed === sp).length] as const).filter(([, n]) => n);
-  if (!counts.some(([sp]) => sp === profileSpeed)) profileSpeed = [...counts].sort((a, b) => b[1] - a[1])[0][0];
-  renderProfile(profileStats(games.filter((g) => g.speed === profileSpeed), profileMinLoss), counts);
+  const counts = SPEED_ORDER.map((sp) => [sp, listGames.filter((g) => g.speed === sp).length] as const).filter(([, n]) => n);
+  if (!counts.some(([sp]) => sp === profileSpeed)) profileSpeed = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'blitz';
+  renderProfile(
+    profileStats(summaries.filter((g) => g.speed === profileSpeed), profileMinLoss),
+    counts,
+    listGames.filter((g) => g.speed === profileSpeed),
+  );
 }
 
 /** Seuil de la synthèse : perte minimale (points de chances de gain) pour qu'une erreur compte. */
@@ -844,110 +933,98 @@ const SPEEDS: Record<string, string> = { bullet: 'Bullet', blitz: 'Blitz', rapid
 /** Cadence affichée dans la synthèse du profil. */
 let profileSpeed = '';
 
-function renderProfile(s: ProfileStats, counts: (readonly [string, number])[]) {
+/** Petite courbe (au moins deux points), avec la première et la dernière valeur en légende. */
+function sparkline(values: number[], cls: string, fmt: (v: number) => string): string {
+  if (values.length < 2) return '<p class="muted">Pas encore assez de parties pour tracer une courbe.</p>';
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
+  const span = hi - lo || 1;
+  const pts = values.map((v, i) => `${(i / (values.length - 1)) * 200},${56 - ((v - lo) / span) * 52}`).join(' ');
+  return `<svg class="spark ${cls}" viewBox="0 0 200 60" preserveAspectRatio="none"><polyline points="${pts}" /></svg>
+    <div class="muted spark-l"><span>min ${fmt(lo)} · max ${fmt(hi)}</span><span>dernière : ${fmt(values.at(-1)!)}</span></div>`;
+}
+
+function renderProfile(s: ProfileStats, counts: (readonly [string, number])[], list: OnlineGame[]) {
+  const n = s.games.length;
+  const u = profileName.toLowerCase();
   const speedButtons =
     counts.length > 1
-      ? counts
-          .map(([sp, n]) => `<button data-speed="${sp}" class="${sp === profileSpeed ? 'active' : ''}">${SPEEDS[sp]} (${n})</button>`)
-          .join('')
+      ? `<div class="speed-bar">${counts
+          .map(([sp, c]) => `<button data-speed="${sp}" class="${sp === profileSpeed ? 'active' : ''}">${SPEEDS[sp]} (${c})</button>`)
+          .join('')}</div>`
       : '';
-  const lossSelect = `<label class="muted" title="Variation minimale de la barre d'évaluation pour qu'une erreur soit retenue">Erreurs retenues
-      <select id="profile-minloss">${LOSS_FILTERS.map(
-        ([v, l]) => `<option value="${v}" ${v === profileMinLoss ? 'selected' : ''}>${l}</option>`,
-      ).join('')}</select></label>`;
-  const speedBar = `<div class="speed-bar">${speedButtons}<span class="spacer"></span>${lossSelect}</div>`;
-  profileExamples = [];
-  profileCauses = s.causes;
-  const example = (m: MistakeRecord) => {
-    profileExamples.push(m);
-    const what = m.san ? `coup ${Math.ceil(m.ply / 2)} : ${esc(m.san)} (${LABELS[m.classification].name.toLowerCase()})` : `position gagnante au coup ${Math.ceil(m.ply / 2)}`;
-    return `<li><button class="link" data-ex="${profileExamples.length - 1}">contre ${esc(m.opponent)} · ${what}</button></li>`;
-  };
-  const maxCount = Math.max(1, ...s.causes.map((c) => c.count));
-  const causes = s.causes
-    .map((c, i) => {
-      const label = c.tag === 'gache' ? 'Avantage gâché (position gagnante, partie non gagnée)' : TAGS[c.tag];
-      const share = c.tag === 'gache' ? `${pct((100 * c.count) / s.games.length)} des parties` : pct((100 * c.count) / s.totalMistakes);
-      const train = c.tag === 'gache' ? '' : `<button data-train="${i}">S'entraîner (${c.count} exercice${c.count > 1 ? 's' : ''})</button>`;
-      return `<details class="cause"><summary><span class="cause-label">${label}</span><span class="bar"><span style="width:${(100 * c.count) / maxCount}%"></span></span><span class="muted cause-n">${c.count} · ${share}</span></summary>
-        ${train}<ul class="examples">${c.examples.slice(-10).reverse().map(example).join('')}</ul></details>`;
-    })
-    .join('');
-  const row = (cells: (string | number)[]) => `<tr>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
 
-  // Chiffres clés.
-  const n = s.games.length;
+  // Milieu : les statistiques à lire.
+  const chrono = [...list].reverse();
+  const elos = chrono.map((g) => (g.white.toLowerCase() === u ? g.whiteElo : g.blackElo)).filter((x): x is number => !!x);
+  const rec = { win: 0, draw: 0, loss: 0 };
+  for (const g of list) rec[resultFor(g)]++;
   const kpi = (label: string, value: string, sub = '') =>
     `<div class="kpi"><div class="muted">${label}</div><div class="kpi-v">${value}</div>${sub ? `<div class="muted kpi-s">${sub}</div>` : ''}</div>`;
   const byColor = (c: 'w' | 'b') => (s.games.some((g) => g.color === c) ? s.accuracy[c].toFixed(1) : '—');
   const blunders = s.games.flatMap((g) => g.mistakes).filter((m) => m.classification === 'blunder').length;
-  const kpis = `<div class="kpis wide">
-      ${kpi('Précision', s.accuracy.all.toFixed(1), `Blancs ${byColor('w')} · Noirs ${byColor('b')}`)}
-      ${kpi('Elo estimé', `~${estimateElo(s.accuracy.all)}`)}
-      ${kpi('Score', pct((100 * (s.record.win + s.record.draw / 2)) / n), `${s.record.win} V · ${s.record.draw} N · ${s.record.loss} D`)}
-      ${kpi('Gaffes par partie', (blunders / n).toFixed(1), `${n} parties en ${SPEEDS[profileSpeed].toLowerCase()}`)}
-    </div>`;
+  const eloDiff = elos.length >= 2 ? elos.at(-1)! - elos[0] : 0;
+  const accs = [...s.games].sort((a, b) => a.date.localeCompare(b.date)).map((g) => g.accuracy);
+  const row = (cells: (string | number)[]) => `<tr>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
+  $('profile-main').innerHTML = `
+    ${speedButtons}
+    <div class="kpis">
+      ${kpi('Précision', n ? s.accuracy.all.toFixed(1) : '—', n ? `Blancs ${byColor('w')} · Noirs ${byColor('b')}` : 'aucune partie analysée')}
+      ${kpi('Elo', elos.length ? String(elos.at(-1)) : '—', elos.length >= 2 ? `${eloDiff >= 0 ? '+' : ''}${eloDiff} sur ${elos.length} parties` : '')}
+      ${kpi('Bilan', list.length ? pct((100 * (rec.win + rec.draw / 2)) / list.length) : '—', `${rec.win} V · ${rec.draw} N · ${rec.loss} D`)}
+      ${kpi('Gaffes par partie', n ? (blunders / n).toFixed(1) : '—', `${n} partie${n > 1 ? 's' : ''} analysée${n > 1 ? 's' : ''} sur ${list.length}`)}
+    </div>
+    <section class="card"><h2>Elo — ${SPEEDS[profileSpeed]}</h2>${sparkline(elos, 'elo', String)}</section>
+    <section class="card"><h2>Précision par partie</h2>${
+      n ? sparkline(accs, 'acc-line', (v) => v.toFixed(1)) : '<p class="muted">Analyse tes parties pour voir ta précision.</p>'
+    }</section>
+    <section class="card">
+      <h2>Ouvertures les plus jouées</h2>
+      ${
+        s.openings.length
+          ? `<table class="stats"><tr><th>Ouverture</th><th>Parties</th><th>Points</th><th>Précision</th></tr>
+             ${s.openings.slice(0, 6).map((o) => row([esc(o.name), o.games, pct(o.score), o.accuracy.toFixed(1)])).join('')}</table>`
+          : '<p class="muted">Analyse tes parties pour voir tes ouvertures.</p>'
+      }
+    </section>
+    ${s.strengths.length ? `<section class="card"><h2>Points forts</h2><ul>${s.strengths.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>` : ''}`;
 
-  // Point faible n°1 : la cause la plus fréquente, avec la phase où elle revient le plus.
-  const PHASE_IN: Record<string, string> = { ouverture: 'ouverture', milieu: 'milieu de partie', finale: 'finale' };
+  // Droite : ce qu'on peut travailler (cartes cliquables).
+  profileExamples = [];
+  profileCauses = s.causes;
+  const example = (m: MistakeRecord) => {
+    profileExamples.push(m);
+    const what = m.san ? `coup ${Math.ceil(m.ply / 2)} : ${esc(m.san)}` : `position gagnante au coup ${Math.ceil(m.ply / 2)}`;
+    return `<li><button class="link" data-ex="${profileExamples.length - 1}">contre ${esc(m.opponent)} · ${what}</button></li>`;
+  };
   // « Erreur de position » est la catégorie fourre-tout : on préfère une cause précise.
   const top = s.causes.find((c) => c.tag !== 'gache' && c.tag !== 'position') ?? s.causes.find((c) => c.tag !== 'gache');
+  const PHASE_IN: Record<string, string> = { ouverture: 'ouverture', milieu: 'milieu de partie', finale: 'finale' };
   let weak = '';
   if (top && top.tag !== 'gache') {
     const phases = [...groupCount(top.examples.map((m) => m.phase))].sort((a, b) => b[1] - a[1]);
-    weak = `<section class="card wide weak">
-      <div><div class="weak-k">Ton point faible n°1</div><div class="weak-t">${TAGS[top.tag]}</div>
-      <div class="muted">${pct((100 * top.count) / s.totalMistakes)} de tes erreurs · surtout en ${PHASE_IN[phases[0][0]]}</div></div>
+    weak = `<section class="card weak">
+      <div class="weak-k">Ton point faible n°1</div><div class="weak-t">${TAGS[top.tag]}</div>
+      <div class="muted">${pct((100 * top.count) / s.totalMistakes)} de tes erreurs · surtout en ${PHASE_IN[phases[0][0]]}</div>
       <button class="primary" data-train="${s.causes.indexOf(top)}">S'entraîner (${top.count})</button></section>`;
   }
-
-  // Erreurs pour 100 coups par phase : vert pour la meilleure, rouge pour la pire.
-  const played = s.byPhase.filter((p) => p.moves).sort((a, b) => a.per100 - b.per100);
-  const tone = (p: (typeof played)[number]) =>
-    played.length < 2 ? '' : p === played[0] ? 'good' : p === played[played.length - 1] ? 'bad' : 'mid';
-  const pills = s.byPhase
-    .map((p) => `<div class="pill ${p.moves ? tone(p) : ''}"><div>${p.phase[0].toUpperCase() + p.phase.slice(1)}</div><b>${p.moves ? p.per100.toFixed(1) : '—'}</b></div>`)
+  const causes = s.causes
+    .map((c, i) => {
+      const label = c.tag === 'gache' ? 'Avantage gâché' : TAGS[c.tag];
+      const share = c.tag === 'gache' ? `${pct((100 * c.count) / n)} des parties` : pct((100 * c.count) / s.totalMistakes);
+      const train = c.tag === 'gache' ? '' : `<button data-train="${i}">S'entraîner (${c.count})</button>`;
+      return `<details class="cause-card"><summary><span>${label}</span><span class="muted">${share}</span></summary>
+        ${train}<ul class="examples">${c.examples.slice(-8).reverse().map(example).join('')}</ul></details>`;
+    })
     .join('');
-
-  // Précision par mois : petite courbe.
-  const accs = s.byMonth.map((m) => m.accuracy);
-  const lo = Math.min(...accs) - 2;
-  const hi = Math.max(...accs) + 2;
-  const pts = s.byMonth.map((m, i) => `${(i / Math.max(1, accs.length - 1)) * 200},${60 - ((m.accuracy - lo) / (hi - lo)) * 56 - 2}`).join(' ');
-  const spark =
-    accs.length >= 2
-      ? `<svg class="spark" viewBox="0 0 200 60" preserveAspectRatio="none"><polyline points="${pts}" /></svg>
-         <div class="muted spark-l"><span>${esc(s.byMonth[0].month.replace('.', '-'))}</span><span>${esc(s.byMonth.at(-1)!.month.replace('.', '-'))} : ${accs.at(-1)!.toFixed(1)}</span></div>`
-      : `<p class="muted">Précision ${accs[0]?.toFixed(1) ?? '—'} sur ${esc(s.byMonth[0]?.month.replace('.', '-') ?? '')}. La courbe apparaît avec des parties sur au moins deux mois.</p>`;
-
-  $('profile-summary').innerHTML = `
-    ${speedBar}
-    ${kpis}
-    ${weak}
-    <section class="card wide">
-      <h2>Causes d'erreur</h2>
-      <p class="muted">${s.totalMistakes} erreurs retenues · ${LOSS_FILTERS.find(([v]) => v === profileMinLoss)![1]}. Clique sur une cause pour voir les exemples.</p>
-      ${causes}
-    </section>
-    <section class="card">
-      <h2>Erreurs pour 100 coups</h2>
-      <div class="pills">${pills}</div>
-    </section>
-    <section class="card">
-      <h2>Précision par mois</h2>
-      ${spark}
-    </section>
-    <section class="card">
-      <h2>Points forts</h2>
-      ${s.strengths.length ? `<ul>${s.strengths.map((x) => `<li>${esc(x)}</li>`).join('')}</ul>` : '<p class="muted">Pas encore assez de parties pour en dégager.</p>'}
-    </section>
-    <section class="card">
-      <h2>Ouvertures</h2>
-      <table class="stats">
-        <tr><th>Ouverture</th><th>Parties</th><th>Points</th><th>Précision</th></tr>
-        ${s.openings.map((o) => row([esc(o.name), o.games, pct(o.score), o.accuracy.toFixed(1)])).join('')}
-      </table>
-    </section>`;
+  const lossSelect = `<label class="muted" title="Variation minimale de la barre d'évaluation pour qu'une erreur soit retenue">Erreurs retenues
+      <select id="profile-minloss">${LOSS_FILTERS.map(
+        ([v, l]) => `<option value="${v}" ${v === profileMinLoss ? 'selected' : ''}>${l}</option>`,
+      ).join('')}</select></label>`;
+  $('profile-side').innerHTML = n
+    ? `<h2 class="side-title">À travailler</h2>${weak}${lossSelect}<div class="cause-list">${causes}</div>`
+    : `<h2 class="side-title">À travailler</h2><section class="card"><p>Analyse tes parties pour découvrir tes erreurs les plus fréquentes.</p>
+       <button class="primary" data-run>Analyser toutes les parties</button></section>`;
 }
 
 /** Nombre d'occurrences de chaque valeur. */
@@ -957,13 +1034,13 @@ function groupCount(xs: string[]): Map<string, number> {
   return m;
 }
 
-$('profile-summary').addEventListener('change', (e) => {
+$('view-profil').addEventListener('change', (e) => {
   const t = e.target as HTMLSelectElement;
   if (t.id !== 'profile-minloss') return;
   profileMinLoss = Number(t.value);
   refreshProfile();
 });
-$('profile-summary').addEventListener('click', async (e) => {
+$('view-profil').addEventListener('click', async (e) => {
   const t = e.target as HTMLElement;
   const sp = t.closest<HTMLElement>('[data-speed]');
   if (sp) {
@@ -971,13 +1048,12 @@ $('profile-summary').addEventListener('click', async (e) => {
     refreshProfile();
     return;
   }
+  if (t.closest('[data-run]')) return runProfile();
   const ex = t.closest<HTMLElement>('[data-ex]');
   if (ex) {
     const m = profileExamples[Number(ex.dataset.ex)];
     const f = await cacheGet<Fiche>(m.id);
-    if (!f) return;
-    showView('analyse');
-    await openFiche(f, m.ply);
+    if (f) await openFiche(f, m.ply);
     return;
   }
   const train = t.closest<HTMLElement>('[data-train]');
@@ -987,7 +1063,6 @@ $('profile-summary').addEventListener('click', async (e) => {
 async function runProfile() {
   const user = profileUser();
   if (!user || profileRunning) return;
-  saveUser(user);
   profileRunning = true;
   profileStop = false;
   $('profile-run').hidden = true;
@@ -1033,34 +1108,38 @@ async function exportFile() {
   const blob = await exportProfile(user);
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
-  a.download = `profil-echecs-${user || 'sans-pseudo'}-${new Date().toISOString().slice(0, 10)}.json`;
+  a.download = `analyses-echecs-${user || 'sans-pseudo'}-${new Date().toISOString().slice(0, 10)}.json`;
   a.click();
   URL.revokeObjectURL(a.href);
 }
 
+/** Restaure un fichier d'analyses ; sur l'accueil, ouvre ensuite le profil enregistré dans le fichier. */
 async function importFile(file: File) {
-  const status = $('profile-status');
+  let msg: string;
   try {
     const r = await importProfile(await file.text());
-    if (!profileUser() && r.username) {
-      $<HTMLInputElement>('profile-user').value = r.username;
-      saveUser(r.username);
-    }
-    status.textContent =
-      `Import : ${r.added} partie${r.added > 1 ? 's' : ''} ajoutée${r.added > 1 ? 's' : ''}, ${r.kept} déjà présente${r.kept > 1 ? 's' : ''}` +
+    if (!profileName && r.username) saveUser(r.username);
+    msg =
+      `Analyses restaurées : ${r.added} partie${r.added > 1 ? 's' : ''} ajoutée${r.added > 1 ? 's' : ''}, ${r.kept} déjà présente${r.kept > 1 ? 's' : ''}` +
       (r.invalid ? `, ${r.invalid} ignorée${r.invalid > 1 ? 's' : ''} (illisibles)` : '') +
       '.';
   } catch (e) {
-    status.textContent = `Import impossible : ${(e as Error).message}.`;
+    msg = `Restauration impossible : ${(e as Error).message}.`;
   }
-  refreshProfile();
+  $('profile-status').textContent = msg;
+  $('home-status').textContent = msg;
+  if (profileName) showView('profil');
 }
 
 // ---------------------------------------------------------------------------
 // Chargement et navigation
 // ---------------------------------------------------------------------------
 
-function load(pgn: string) {
+/**
+ * Charge une partie et ouvre sa vue. `pov` : le joueur à mettre en bas de l'échiquier
+ * (le profil par défaut, ou le pseudo recherché à l'import), qu'il ait les Blancs ou les Noirs.
+ */
+function load(pgn: string, pov = profileName) {
   let g: Game;
   try {
     g = parsePgn(pgn);
@@ -1091,7 +1170,12 @@ function load(pgn: string) {
   });
   const h = g.headers;
   $('game-info').textContent = h.White ? `${h.White} – ${h.Black}${h.Result ? ` (${h.Result})` : ''}` : '';
+  const orientation = pov && h.Black?.toLowerCase() === pov.toLowerCase() ? 'black' : 'white';
+  board.set({ orientation });
+  $('evalbar').classList.toggle('flipped', orientation === 'black');
   importDialog().close();
+  showView('partie');
+  renderGamesList();
   renderPlayers();
   renderReport();
   renderMoves();
@@ -1116,28 +1200,29 @@ const go = {
 };
 
 $('load').onclick = () => load($<HTMLTextAreaElement>('pgn').value);
-$('tab-analyse').onclick = () => showView('analyse');
-$('tab-profil').onclick = () => showView('profil');
+$('go-profile').onclick = () => showView(profileName ? 'profil' : 'accueil');
+$('change-profile').onclick = () => showView('accueil');
+$('home-import').onclick = $('profile-open-import').onclick = () => importDialog().showModal();
+$('home-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const user = $<HTMLInputElement>('home-user').value.trim();
+  if (!user) return;
+  if (user.toLowerCase() !== profileName.toLowerCase()) listGames = [];
+  saveUser(user);
+  showView('profil');
+});
+$('home-restore').onclick = $('profile-restore').onclick = () => $('restore-file').click();
+$<HTMLInputElement>('restore-file').onchange = (e) => {
+  const input = e.target as HTMLInputElement;
+  if (input.files?.[0]) importFile(input.files[0]);
+  input.value = '';
+};
 $('profile-run').onclick = runProfile;
 $('profile-stop').onclick = () => {
   profileStop = true;
   $('profile-status').textContent = 'Mise en pause après la position en cours…';
 };
 $('profile-export').onclick = exportFile;
-$<HTMLInputElement>('profile-import').onchange = (e) => {
-  const input = e.target as HTMLInputElement;
-  if (input.files?.[0]) importFile(input.files[0]);
-  input.value = '';
-};
-$('profile-user').addEventListener('change', () => {
-  saveUser(profileUser());
-  refreshProfile();
-});
-try {
-  $<HTMLInputElement>('profile-user').value = localStorage.getItem(USER_KEY) ?? '';
-} catch {
-  /* stockage indisponible */
-}
 // Un moteur par cœur, en laissant un cœur à la page (8 au plus par défaut, 2 sur téléphone).
 $<HTMLInputElement>('profile-engines').value = String(Math.min(MOBILE ? 2 : 8, Math.max(1, (navigator.hardwareConcurrency || 2) - 1)));
 
@@ -1155,9 +1240,6 @@ $('flip').onclick = () => {
   $('evalbar').classList.toggle('flipped', board.state.orientation === 'black');
   renderPlayers();
 };
-$('open-import').onclick = $('bn-import').onclick = () => importDialog().showModal();
-$('bn-analyse').onclick = () => showView('analyse');
-$('bn-profil').onclick = () => showView('profil');
 $('engine-on').onchange = () => current && updateEngine(current);
 $('key-prev').onclick = () => jumpKeyMoment(-1);
 $('key-next').onclick = () => jumpKeyMoment(1);
@@ -1179,13 +1261,10 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// Partie d'exemple (Morphy, « partie de l'Opéra », 1858) pour tester tout de suite.
-const exemple = `[White "Paul Morphy"]
-[Black "Duc de Brunswick et comte Isouard"]
-[Result "1-0"]
-
-1. e4 e5 2. Nf3 d6 3. d4 Bg4 4. dxe5 Bxf3 5. Qxf3 dxe5 6. Bc4 Nf6 7. Qb3 Qe7
-8. Nc3 c6 9. Bg5 b5 10. Nxb5 cxb5 11. Bxb5+ Nbd7 12. O-O-O Rd8 13. Rxd7 Rxd7
-14. Rd1 Qe6 15. Bxd7+ Nxd7 16. Qb8+ Nxb8 17. Rd8# 1-0`;
-$<HTMLTextAreaElement>('pgn').value = exemple;
-load(exemple);
+// Démarrage : l'accueil la première fois, ensuite directement le profil.
+try {
+  profileName = localStorage.getItem(USER_KEY) ?? '';
+} catch {
+  /* stockage indisponible : accueil */
+}
+showView(profileName ? 'profil' : 'accueil');
