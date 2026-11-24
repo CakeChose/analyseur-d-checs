@@ -18,7 +18,7 @@ import {
   type MoveReview,
   type PositionEval,
 } from './analysis';
-import { Chess, type Square } from 'chess.js';
+import { Chess, type Move, type Square } from 'chess.js';
 import { buildTree, deleteNode, mainline, playMove, type TreeNode } from './tree';
 import { drawGraph } from './graph';
 import { cacheGet, cachePut } from './cache';
@@ -35,7 +35,7 @@ import {
   type ProfileStats,
 } from './profile';
 import { winPercent } from './winprob';
-import { explainMove } from './explain';
+import { explainMove, mateFor, playLine } from './explain';
 import { loadBook, loadCatalogue, openingName, type CatalogueLine } from './openings';
 import { fetchChessCom, fetchChessComStats, fetchLichess, type OnlineGame, type SpeedStats } from './import';
 
@@ -103,7 +103,7 @@ function legalDests(fen: string): Map<Key, Key[]> {
 function onUserMove(orig: Key, dest: Key) {
   if (!current) return;
   if (training) return trainingMove(orig, dest);
-  if (puzzle) return puzzleMove(orig, dest);
+  if (puzzle && !puzzleFree()) return puzzleMove(orig, dest);
   const piece = new Chess(current.fen).get(orig as Square);
   const promoting = piece?.type === 'p' && (dest[1] === '8' || dest[1] === '1');
   const node = playMove(current, orig, dest, promoting ? 'q' : undefined);
@@ -190,7 +190,7 @@ function clearEngine() {
 }
 
 function updateEngine(node: TreeNode) {
-  if (puzzle || training) {
+  if ((puzzle && !puzzleFree()) || training) {
     // Pas d'aide du moteur pendant un exercice : ça donnerait la réponse.
     clearEngine();
     $('engine-status').textContent = 'masqué pendant l’exercice';
@@ -372,7 +372,12 @@ const VERDICT: Record<Classification, string> = {
 };
 
 function renderReview(node: TreeNode) {
-  if (puzzle) return renderPuzzle();
+  if (puzzle) {
+    renderPuzzle();
+    // Après l'exercice, les coups joués librement sont commentés sous le message.
+    if (puzzleFree() && node.review) $('review').append(...moveReviewContent(node));
+    return;
+  }
   const box = $('review');
   const r = node.review;
   if (!r || !node.move || !node.parent) {
@@ -381,27 +386,31 @@ function renderReview(node: TreeNode) {
   }
   box.hidden = false;
   box.className = `review c-${r.classification}`;
-  const best = r.bestUci ? uciToSan(node.parent.fen, [r.bestUci])[0] : undefined;
-  const showBest = best && best !== node.move.san && !['brilliant', 'great', 'best'].includes(r.classification);
   box.innerHTML = '';
+  box.append(...moveReviewContent(node));
+}
+
+/** Commentaire d'un coup : verdict, précision, meilleur coup et faits vérifiés. */
+function moveReviewContent(node: TreeNode): HTMLElement[] {
+  const r = node.review!;
+  const best = r.bestUci ? uciToSan(node.parent!.fen, [r.bestUci])[0] : undefined;
+  const showBest = best && best !== node.move!.san && !['brilliant', 'great', 'best'].includes(r.classification);
   const title = document.createElement('div');
   title.className = 'review-title';
-  title.textContent = `${LABELS[r.classification].symbol} ${node.move.san} ${VERDICT[r.classification]}`;
+  title.textContent = `${LABELS[r.classification].symbol} ${node.move!.san} ${VERDICT[r.classification]}`;
   const detail = document.createElement('div');
   detail.className = 'muted';
   detail.textContent =
     `Précision du coup : ${Math.round(r.accuracy)} %` +
     (r.loss >= 1 ? ` · chances de gain perdues : ${r.loss.toFixed(1)} pts` : '') +
     (showBest ? ` · meilleur coup : ${best}` : '');
-  box.append(title, detail);
-
   // Explication : faits vérifiés par le moteur et les règles.
   const facts = explainMove(node);
-  if (!facts.length) return;
+  if (!facts.length) return [title, detail];
   const ul = document.createElement('ul');
   ul.className = 'facts';
   for (const f of facts) ul.append(Object.assign(document.createElement('li'), { textContent: f }));
-  box.append(ul);
+  return [title, detail, ul];
 }
 
 function renderGraph() {
@@ -626,6 +635,11 @@ let puzzle: {
   recorded?: boolean;
   /** Problèmes aléatoires : on ne dit ni le coup joué ni le type d'erreur. */
   blind?: boolean;
+  /** Suite à trouver (coups UCI, le joueur commence) et position dans cette suite. */
+  line: string[];
+  step: number;
+  /** Coup donné par « Solution ». */
+  solution?: string;
 } | null = null;
 
 const BAD: Classification[] = ['inaccuracy', 'mistake', 'miss', 'blunder'];
@@ -645,12 +659,14 @@ async function showPuzzle() {
   const target = puzzleTarget();
   const color = target.move!.color === 'w' ? 'white' : 'black';
   if (board.state.orientation !== color) $('flip').click();
+  puzzle.line = puzzleLine(target.parent!);
+  puzzle.step = 0;
   show(target.parent!);
 }
 
 function startPuzzleQueue(queue: { id: string; ply: number }[], view: View = 'partie', blind = false) {
   if (!queue.length) return false;
-  puzzle = { queue, index: 0, state: 'try', view, blind };
+  puzzle = { queue, index: 0, state: 'try', view, blind, line: [], step: 0 };
   showView(view);
   showPuzzle();
   return true;
@@ -675,45 +691,116 @@ function goodAnswers(position: TreeNode): string[] {
   return lines.filter((l) => best - pov(winPercent(l)) < 2).map((l) => l.pv[0]);
 }
 
+/** Exercice résolu (ou solution affichée) : l'échiquier redevient libre et les coups sont analysés. */
+const puzzleFree = () => !!puzzle && (puzzle.state === 'solved' || puzzle.state === 'shown');
+
+/**
+ * La suite à trouver, comme sur Lichess : un mat court en entier, sinon la ligne du moteur
+ * tant qu'elle reste forcée (prise ou échec d'un côté ou de l'autre), 3 coups du joueur au plus.
+ * Elle se termine toujours par un coup du joueur.
+ */
+function puzzleLine(position: TreeNode): string[] {
+  const best = position.eval?.lines[0];
+  if (!best?.pv.length) return [];
+  const me = position.ply % 2 === 0 ? 'w' : 'b';
+  const mate = mateFor(best, me);
+  if (mate && mate <= 3 && best.pv.length >= 2 * mate - 1) return best.pv.slice(0, 2 * mate - 1);
+  const moves = playLine(position.fen, best.pv, 6);
+  const forcing = (m: Move) => !!m.captured || /[+#]/.test(m.san);
+  let end = 1;
+  // i : réponse de l'adversaire, i + 1 : coup suivant du joueur.
+  for (let i = 1; i + 1 < moves.length && end < 5; i += 2) {
+    if (!forcing(moves[i - 1]) && !forcing(moves[i])) break;
+    end = i + 2;
+  }
+  return best.pv.slice(0, end);
+}
+
+// Tests en développement seulement : lire l'exercice en cours depuis la console (retiré du site compilé).
+if (import.meta.env.DEV) Object.assign(window, { __puzzle: () => puzzle });
+
+/** Compte le résultat de l'exercice (seul le premier essai compte). */
+function recordPuzzle(ok: boolean) {
+  if (!puzzle || puzzle.recorded) return;
+  const item = puzzle.queue[puzzle.index];
+  recordExo(item.id, item.ply, ok);
+  puzzle.recorded = true;
+}
+
 function puzzleMove(orig: Key, dest: Key) {
   if (!puzzle || !current) return;
-  const target = puzzleTarget();
-  const chess = new Chess(current.fen);
+  const p = puzzle;
+  const node = current;
+  const chess = new Chess(node.fen);
   const piece = chess.get(orig as Square);
   const promo = piece?.type === 'p' && (dest[1] === '8' || dest[1] === '1') ? 'q' : '';
-  const san = chess.move({ from: orig, to: dest, promotion: promo || undefined }).san;
-  const ok = goodAnswers(target.parent!).includes(orig + dest + promo);
-  puzzle.state = ok ? 'solved' : 'wrong';
-  puzzle.tried = san;
-  if (!puzzle.recorded) {
-    const item = puzzle.queue[puzzle.index];
-    recordExo(item.id, item.ply, ok);
-    puzzle.recorded = true;
+  let san: string;
+  try {
+    san = chess.move({ from: orig, to: dest, promotion: promo || undefined }).san;
+  } catch {
+    return show(node);
   }
-  renderPuzzle();
-  if (!ok) setTimeout(() => puzzle && show(target.parent!), 700);
-  else board.set({ movable: { color: undefined } });
+  const uci = orig + dest + promo;
+  // Au premier coup, un coup presque aussi bon que celui du moteur est accepté (et termine l'exercice).
+  const alternative = p.step === 0 && uci !== p.line[0] && goodAnswers(node).includes(uci);
+  const ok = uci === p.line[p.step] || alternative || chess.isCheckmate();
+  p.tried = san;
+  if (!ok) {
+    p.state = 'wrong';
+    recordPuzzle(false);
+    renderPuzzle();
+    setTimeout(() => puzzle === p && show(node), 700);
+    return;
+  }
+  const child = playMove(node, orig, dest, promo || undefined)!;
+  renderMoves();
+  p.step++;
+  if (alternative || chess.isCheckmate() || p.step >= p.line.length) {
+    p.state = 'solved';
+    recordPuzzle(true);
+    show(child);
+    return;
+  }
+  p.state = 'try';
+  show(child);
+  // L'adversaire répond avec la suite du moteur.
+  setTimeout(() => {
+    if (puzzle !== p || current !== child) return;
+    const u = p.line[p.step];
+    const reply = playMove(child, u.slice(0, 2), u.slice(2, 4), u[4]);
+    if (!reply) return;
+    p.step++;
+    renderMoves();
+    show(reply);
+  }, 450);
 }
 
 function renderPuzzle() {
-  if (!puzzle) return;
+  if (!puzzle || !current) return;
+  const p = puzzle;
   const box = $('review');
   const target = puzzleTarget();
-  const position = target.parent!;
-  const bestUci = position.eval!.lines[0].pv[0];
-  const bestSan = uciToSan(position.fen, [bestUci])[0];
+  const total = Math.ceil(p.line.length / 2);
+  const done = Math.floor(p.step / 2);
+  const expected = p.line[p.step];
+  const expectedSan = expected ? uciToSan(current.fen, [expected])[0] : '';
   box.hidden = false;
   box.className = 'review puzzle';
-  const n = `${puzzle.index + 1}/${puzzle.queue.length}`;
+  const n = `${p.index + 1}/${p.queue.length}`;
   const side = target.move!.color === 'w' ? 'les Blancs' : 'les Noirs';
+  const length = total > 1 ? ` (${total} coups à trouver)` : '';
+  const free = ' Tu peux maintenant jouer les coups que tu veux : ils sont analysés.';
   const msg = {
-    try: puzzle.blind
-      ? `Problème ${n} — Les ${side.slice(4)} jouent : trouve le meilleur coup.`
-      : `Exercice ${n} — Dans la partie, ${side} ont joué ${target.move!.san} (${LABELS[target.review!.classification].name.toLowerCase()}). Trouve mieux !`,
-    wrong: `${puzzle.tried} n'est pas le bon coup. Réessaie.`,
-    solved: `Bravo ! ${puzzle.tried} était ${puzzle.tried === bestSan ? 'le meilleur coup' : 'un très bon coup'}.`,
-    shown: `La solution était ${bestSan} (flèche verte).`,
-  }[puzzle.state];
+    try:
+      p.step > 0
+        ? `Bien ! Continue : coup ${done + 1} sur ${total}.`
+        : p.blind
+          ? `Problème ${n} — Les ${side.slice(4)} jouent : trouve le meilleur coup${length}.`
+          : `Exercice ${n} — Dans la partie, ${side} ont joué ${target.move!.san} (${LABELS[target.review!.classification].name.toLowerCase()}). Trouve mieux${length} !`,
+    wrong: `${p.tried} n'est pas le bon coup. Réessaie.`,
+    solved: (total > 1 && p.step > 1 ? 'Bravo ! Tu as trouvé toute la séquence.' : `Bravo ! ${p.tried} était le bon coup.`) + free,
+    shown: `La solution était ${expectedSan || p.solution} (flèche verte).` + free,
+  }[p.state];
   box.innerHTML = '';
   box.append(Object.assign(document.createElement('div'), { className: 'review-title', textContent: msg }));
   const bar = document.createElement('div');
@@ -723,34 +810,31 @@ function renderPuzzle() {
     b.onclick = fn;
     bar.append(b);
   };
-  if (puzzle.state === 'try' || puzzle.state === 'wrong') {
+  if (p.state === 'try' || p.state === 'wrong') {
     button('Solution', () => {
-      puzzle!.state = 'shown';
-      if (!puzzle!.recorded) {
-        const item = puzzle!.queue[puzzle!.index];
-        recordExo(item.id, item.ply, false);
-        puzzle!.recorded = true;
-      }
-      board.setAutoShapes([{ orig: bestUci.slice(0, 2) as Key, dest: bestUci.slice(2, 4) as Key, brush: 'green' }]);
+      p.state = 'shown';
+      p.solution = expectedSan;
+      recordPuzzle(false);
       renderPuzzle();
+      board.setAutoShapes([{ orig: expected.slice(0, 2) as Key, dest: expected.slice(2, 4) as Key, brush: 'green' }]);
     });
   }
-  if (puzzle.index + 1 < puzzle.queue.length) {
+  if (p.index + 1 < p.queue.length) {
     button('Suivant', () => {
-      puzzle!.index++;
-      puzzle!.state = 'try';
-      puzzle!.recorded = false;
+      p.index++;
+      p.state = 'try';
+      p.recorded = false;
       showPuzzle();
     });
   }
   button('Arrêter', () => {
-    const fromProblems = puzzle!.view === 'problemes';
+    const fromProblems = p.view === 'problemes';
     puzzle = null;
     if (fromProblems) showView('profil');
     else show(target);
   });
   box.append(bar);
-  if (puzzle.view === 'problemes') renderProblems();
+  if (p.view === 'problemes') renderProblems();
 }
 
 // ---------------------------------------------------------------------------
