@@ -1019,7 +1019,7 @@ const linkOf = (pgn: string) => pgn.match(/\[Link "([^"]+)"\]/)?.[1] ?? '';
 
 /** Les parties sont gardées 1 h dans le navigateur pour ne pas interroger chess.com à chaque visite. */
 async function loadGames(user: string, speeds: string[], force = false): Promise<OnlineGame[]> {
-  const key = `parties-cadences:${user.toLowerCase()}`;
+  const key = `parties-cadences-v2:${user.toLowerCase()}`;
   try {
     const cached = JSON.parse(localStorage.getItem(key) ?? 'null');
     if (!force && cached && Date.now() - cached.at < 3600_000) {
@@ -1123,7 +1123,7 @@ async function refreshProfile() {
 let chessStats: { speeds: Record<string, SpeedStats>; puzzleBest?: number } | null = null;
 
 async function loadChessStats(user: string) {
-  const key = `stats:${user.toLowerCase()}`;
+  const key = `stats-v2:${user.toLowerCase()}`;
   try {
     const cached = JSON.parse(localStorage.getItem(key) ?? 'null');
     if (cached && Date.now() - cached.at < 3600_000) return cached.stats;
@@ -1235,6 +1235,50 @@ function endingsCard(list: OnlineGame[]): string {
     <table class="stats">${line('win', 'Victoires')}${line('loss', 'Défaites')}${line('draw', 'Nulles')}</table></section>`;
 }
 
+/** Cadence affichée, sur tout l'historique du compte chess.com (pas seulement les dernières parties). */
+function historyCard(): string {
+  const s = chessStats?.speeds[profileSpeed];
+  if (!s) return '';
+  const n = s.win + s.loss + s.draw;
+  const bestElo = s.bestGame ? `<a class="link" href="${esc(s.bestGame)}" target="_blank" rel="noopener" title="Voir la partie sur chess.com">${s.best}</a>` : String(s.best);
+  const best = s.best ? `${bestElo}${s.bestDate ? ` <span class="muted">${new Date(s.bestDate).toLocaleDateString('fr-FR')}</span>` : ''}` : '—';
+  // Par jour : chess.com donne le temps moyen par coup (en secondes).
+  const perMove = (sec: number) => (sec >= 3600 ? `${(sec / 3600).toFixed(1).replace('.', ',')} h` : `${Math.round(sec / 60)} min`);
+  return `<section class="card"><h2>Tout ton historique en ${SPEEDS[profileSpeed].toLowerCase()}</h2>
+    <div class="facts-grid">
+      ${fact('Meilleur Elo', best)}
+      ${fact('Parties jouées', n.toLocaleString('fr-FR'))}
+      ${fact('V / N / D', vnd(s.win, s.draw, s.loss, ' / ', true))}
+      ${fact('Score', n ? pct((100 * (s.win + s.draw / 2)) / n) : '—')}
+      ${s.timePerMove ? fact('Temps moyen par coup', perMove(s.timePerMove)) : ''}
+      ${s.timeoutPercent !== undefined && profileSpeed === 'daily' ? fact('Parties perdues au temps', pct(s.timeoutPercent)) : ''}
+    </div></section>`;
+}
+
+/** Classification des coups dans les parties analysées de la cadence (brillants, gaffes…), plus la précision chess.com. */
+function movesCard(s: ProfileStats, list: OnlineGame[]): string {
+  const n = s.games.length;
+  const u = profileName.toLowerCase();
+  const cc = list.flatMap((g) => (g.accuracies ? [g.white.toLowerCase() === u ? g.accuracies.white : g.accuracies.black] : []));
+  const ccFact = cc.length
+    ? fact('Précision selon chess.com', `${(cc.reduce((a, b) => a + b, 0) / cc.length).toFixed(1)} <span class="muted">(${cc.length} parties revues)</span>`,
+        'Moyenne de la précision calculée par chess.com, sur les parties revues avec son outil')
+    : '';
+  if (!n) return ccFact ? `<section class="card"><h2>Tes coups</h2><div class="facts-grid">${ccFact}</div></section>` : '';
+  const total = (c: Classification) => s.games.reduce((a, g) => a + (g.counts[c] ?? 0), 0);
+  const moves = s.games.reduce((a, g) => a + Object.values(g.counts).reduce((x, y) => x + (y ?? 0), 0), 0);
+  const ORDER: Classification[] = ['brilliant', 'great', 'best', 'excellent', 'good', 'book', 'inaccuracy', 'mistake', 'miss', 'blunder'];
+  const cells = ORDER.map((c) => {
+    const k = total(c);
+    return `<div class="move-count c-${c}"><span class="mc-sym">${LABELS[c].symbol}</span><span class="mc-n">${k.toLocaleString('fr-FR')}</span>
+      <span class="muted">${LABELS[c].name}${moves ? ` · ${pct((100 * k) / moves)}` : ''}</span></div>`;
+  }).join('');
+  return `<section class="card"><h2>Tes coups</h2>
+    <p class="muted">Sur ${n > 1 ? `tes ${n} parties analysées` : 'ta partie analysée'} en ${SPEEDS[profileSpeed].toLowerCase()} (${moves.toLocaleString('fr-FR')} coups).</p>
+    <div class="move-counts">${cells}</div>
+    ${ccFact ? `<div class="facts-grid">${ccFact}</div>` : ''}</section>`;
+}
+
 /** Seuil de la synthèse : perte minimale (points de chances de gain) pour qu'une erreur compte. */
 let profileMinLoss = 0;
 const LOSS_FILTERS: [number, string][] = [
@@ -1314,6 +1358,8 @@ function renderProfile(s: ProfileStats, list: OnlineGame[]) {
         : '<p class="muted">Analyse tes parties pour voir ta précision.</p>'
     }</section>
     </div>
+    ${historyCard()}
+    ${movesCard(s, list)}
     ${opponentCard(list)}
     ${endingsCard(list)}
     <section class="card">

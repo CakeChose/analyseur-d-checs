@@ -12,6 +12,8 @@ export interface OnlineGame {
   date: Date;
   /** bullet, blitz, rapid… */
   speed: string;
+  /** Précision calculée par chess.com (seulement si la partie a été revue sur chess.com). */
+  accuracies?: { white: number; black: number };
   pgn: string;
 }
 
@@ -23,6 +25,11 @@ export interface SpeedStats {
   best?: number;
   /** Date du meilleur Elo, en millisecondes. */
   bestDate?: number;
+  /** Lien vers la partie où le meilleur Elo a été atteint. */
+  bestGame?: string;
+  /** Par jour : temps moyen par coup (secondes) et part des parties perdues au temps (%). */
+  timePerMove?: number;
+  timeoutPercent?: number;
   win: number;
   loss: number;
   draw: number;
@@ -41,6 +48,9 @@ export async function fetchChessComStats(user: string): Promise<{ speeds: Record
       rating: s.last?.rating,
       best: s.best?.rating,
       bestDate: s.best?.date ? s.best.date * 1000 : undefined,
+      bestGame: typeof s.best?.game === 'string' && s.best.game.startsWith('https://www.chess.com/') ? s.best.game : undefined,
+      timePerMove: s.record?.time_per_move,
+      timeoutPercent: s.record?.timeout_percent,
       win: s.record?.win ?? 0,
       loss: s.record?.loss ?? 0,
       draw: s.record?.draw ?? 0,
@@ -82,6 +92,7 @@ export async function fetchChessCom(user: string, max = MAX, speeds?: string[]):
         result: w === 1 ? '1-0' : w === 0.5 ? '½-½' : '0-1',
         date: new Date(g.end_time * 1000),
         speed: g.time_class,
+        accuracies: g.accuracies,
         pgn: g.pgn,
       });
       if (full()) return games;

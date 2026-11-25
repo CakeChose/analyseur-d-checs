@@ -1620,3 +1620,33 @@ table.stats tr.current td {
   border-radius: 3px;
   display: inline-block;
 }
+
+/* Profil : nombre de coups par classification */
+.move-counts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.move-count {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 8px;
+  align-items: baseline;
+  padding: 6px 8px;
+  border-left: 4px solid var(--c);
+  border-radius: 4px;
+  background: var(--bg);
+}
+.mc-sym {
+  color: var(--c);
+  font-weight: 700;
+}
+.mc-n {
+  font-weight: 700;
+  font-size: 18px;
+}
+.move-count .muted {
+  grid-column: 1 / -1;
+  font-size: 12px;
+}

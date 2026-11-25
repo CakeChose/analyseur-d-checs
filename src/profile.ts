@@ -183,6 +183,8 @@ export interface GameSummary {
   wasWinning: boolean;
   /** Demi-coup où la position gagnante a été atteinte (pour l'exemple « avantage gâché »). */
   winningPly: number;
+  /** Nombre de coups du joueur par classification (brillants, gaffes…). */
+  counts: Partial<Record<Classification, number>>;
 }
 
 /**
@@ -227,6 +229,7 @@ export function summarize(fiche: Fiche, username: string): GameSummary | null {
     tacticsFound: 0,
     wasWinning: false,
     winningPly: 0,
+    counts: {},
   };
   for (const fen of game.fens) summary.opening = openingName(fen) ?? summary.opening;
   if (!summary.opening) summary.opening = h.ECO ?? 'Inconnue';
@@ -238,6 +241,7 @@ export function summarize(fiche: Fiche, username: string): GameSummary | null {
     const after = fiche.positions[i + 1];
     const phase = phaseOf(move.before, i + 1);
     summary.movesByPhase[phase]++;
+    summary.counts[review.classification] = (summary.counts[review.classification] ?? 0) + 1;
     if (!summary.wasWinning && pov(after.win) >= 80 && i >= 10) {
       summary.wasWinning = true;
       summary.winningPly = i + 1;
