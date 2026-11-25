@@ -416,12 +416,20 @@ function moveReviewContent(node: TreeNode): HTMLElement[] {
     (r.loss >= 1 ? ` · chances de gain perdues : ${r.loss.toFixed(1)} pts` : '') +
     (showBest ? ` · meilleur coup : ${best}` : '');
   // Explication : faits vérifiés par le moteur et les règles.
-  const facts = explainMove(node);
-  if (!facts.length) return [title, detail];
-  const ul = document.createElement('ul');
-  ul.className = 'facts';
-  for (const f of facts) ul.append(Object.assign(document.createElement('li'), { textContent: f }));
-  return [title, detail, ul];
+  const { summary, facts } = explainMove(node);
+  const out: HTMLElement[] = [title, detail];
+  if (summary) {
+    const p = Object.assign(document.createElement('p'), { className: 'summary' });
+    p.append(Object.assign(document.createElement('b'), { textContent: 'En bref : ' }), summary);
+    out.push(p);
+  }
+  if (facts.length) {
+    const ul = document.createElement('ul');
+    ul.className = 'facts';
+    for (const f of facts) ul.append(Object.assign(document.createElement('li'), { textContent: f }));
+    out.push(ul);
+  }
+  return out;
 }
 
 function renderGraph() {

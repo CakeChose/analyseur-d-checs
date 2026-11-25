@@ -172,14 +172,58 @@ export function pinByMove(chess: Chess, move: Move): { pinned: Square; type: Pie
 }
 
 /**
- * Faits expliquant le coup qui mène à `node` (phrases en français).
- * Nécessite que le coup ait été noté (node.review) et les deux positions évaluées.
+ * La suite `pv` du camp `who` aboutit-elle depuis `fen` ? Un mat en `mate` coups si c'est
+ * un mat, sinon un gain de matériel. Faux si la suite n'est pas jouable en entier :
+ * sinon une prise isolée (« Rxd5 ») compterait comme un gain alors que la reprise n'est pas jouée.
  */
-export function explainMove(node: TreeNode): string[] {
+function lineWorks(fen: string, pv: string[], who: Color, mate?: number): boolean {
+  try {
+    const n = Math.min(pv.length, mate ? 2 * mate - 1 : 6);
+    const moves = playLine(fen, pv, n);
+    if (moves.length < n || moves[0]?.color !== who) return false;
+    if (mate) return new Chess(moves.at(-1)!.after).isCheckmate();
+    return netCaptures(moves, who).won.length > 0;
+  } catch {
+    return false; // position impossible (roi en échec du camp qui n'a pas le trait…)
+  }
+}
+
+/** Même position, mais c'est à `who` de jouer : pour voir ce qu'il menaçait déjà. */
+function withTurn(fen: string, who: Color): string {
+  const f = fen.split(' ');
+  f[1] = who;
+  f[3] = '-';
+  return f.join(' ');
+}
+
+/** Pièce que le coup laisse en prise alors qu'elle était défendue par la pièce qui vient de bouger. */
+function defenceRemoved(beforeFen: string, after: Chess, move: Move): { sq: Square; type: PieceSymbol } | undefined {
+  const before = new Chess(beforeFen);
+  const wasHanging = new Set(hangingPieces(before, move.color).map((h) => h.sq));
+  return hangingPieces(after, move.color).find(
+    (h) => h.sq !== move.to && !wasHanging.has(h.sq) && before.attackers(h.sq, move.color).includes(move.from),
+  );
+}
+
+/** Choix stable d'une tournure (toujours la même pour une position donnée) : le texte ne change pas à chaque affichage. */
+function pick(seed: string, options: string[]): string {
+  let h = 0;
+  for (const c of seed) h = (h * 31 + c.charCodeAt(0)) | 0;
+  return options[Math.abs(h) % options.length];
+}
+
+const cap = (s: string) => s[0].toUpperCase() + s.slice(1);
+const ton = (p: PieceSymbol) => (p === 'q' || p === 'r' ? 'ta ' : 'ton ');
+
+/**
+ * Explication du coup qui mène à `node` : une synthèse en une phrase (coups fautifs) et le
+ * détail des faits. Nécessite que le coup ait été noté (node.review) et les deux positions évaluées.
+ */
+export function explainMove(node: TreeNode): { summary?: string; facts: string[] } {
   const move = node.move;
   const parent = node.parent;
   const review = node.review;
-  if (!move || !parent || !review) return [];
+  if (!move || !parent || !review) return { facts: [] };
   const facts: string[] = [];
   const me = move.color;
   const them: Color = me === 'w' ? 'b' : 'w';
@@ -190,7 +234,7 @@ export function explainMove(node: TreeNode): string[] {
   const bestSan = review.bestUci ? uciToSan(parent.fen, [review.bestUci])[0] : undefined;
   const bad = ['inaccuracy', 'mistake', 'miss', 'blunder'].includes(review.classification);
 
-  if (after.isCheckmate()) return ['Échec et mat : la partie est gagnée.'];
+  if (after.isCheckmate()) return { facts: ['Échec et mat : la partie est gagnée.'] };
 
   // --- Ce que fait le coup joué --------------------------------------------
   if (review.classification === 'brilliant' && afterEval?.lines[0]) {
@@ -231,43 +275,86 @@ export function explainMove(node: TreeNode): string[] {
   }
 
   // --- Ce qui ne va pas avec le coup joué ----------------------------------
+  /** Cause principale, pour la synthèse (« tu n'as pas paré la menace Qxf7# »). */
+  let cause = '';
+  /** La suite gagnante de l'adversaire, si elle existait déjà avant le coup (menace ignorée). */
+  let threat: { pv: string[]; san: string; mate?: number } | undefined;
   if (bad && afterEval?.lines[0]) {
     const reply = afterEval.lines[0];
     const theirMate = mateFor(reply, them);
     const replySan = uciToSan(node.fen, reply.pv.slice(0, 1))[0];
-    if (theirMate) {
-      facts.push(`Après ${move.san}, l'adversaire a un mat en ${theirMate} : ${lineText(node.fen, reply.pv, theirMate * 2)}.`);
-    } else {
-      const line = playLine(node.fen, reply.pv, 6);
-      const gain = netCaptures([move, ...line], them);
-      if (gain.won.length && replySan) {
-        facts.push(
-          `L'adversaire répond ${replySan} et gagne ${describeGain(gain)} (suite probable : ${lineText(node.fen, reply.pv)}).`,
-        );
-      } else if (replySan) {
-        facts.push(
-          `La meilleure réponse est ${replySan} (suite probable : ${lineText(node.fen, reply.pv)}) ; l'évaluation passe de ${before?.lines[0] ? formatScore(before.lines[0]) : '?'} à ${formatScore(reply)}.`,
-        );
-      }
+    const gain = theirMate ? undefined : netCaptures([move, ...playLine(node.fen, reply.pv, 6)], them);
+    const winning = !!replySan && (!!theirMate || !!gain?.won.length);
+    // La même suite marchait-elle déjà si l'adversaire avait eu le trait avant ton coup ?
+    if (winning && lineWorks(withTurn(parent.fen, them), reply.pv, them, theirMate)) {
+      threat = { pv: reply.pv, san: replySan, mate: theirMate };
     }
-    const hanging = hangingPieces(after, me).filter((h) => h.sq !== move.from);
-    if (hanging.length && !theirMate) {
-      const h = hanging[0];
-      facts.push(`${article(h.type)[0].toUpperCase() + article(h.type).slice(1)}${NAMES[h.type]} ${colorName(me, h.type)} en ${h.sq} est en prise.`);
+    const lostDefence = theirMate ? undefined : defenceRemoved(parent.fen, after, move);
+    if (theirMate) {
+      facts.push(
+        pick(node.fen, [
+          `Après ${move.san}, l'adversaire a un mat en ${theirMate} : ${lineText(node.fen, reply.pv, theirMate * 2)}.`,
+          `${move.san} permet à l'adversaire de mater en ${theirMate} : ${lineText(node.fen, reply.pv, theirMate * 2)}.`,
+        ]),
+      );
+      cause = threat
+        ? `tu n'as pas paré la menace de mat ${replySan}`
+        : `${move.san} permet un mat en ${theirMate} (${replySan})`;
+    } else if (gain?.won.length && replySan) {
+      facts.push(
+        pick(node.fen, [
+          `L'adversaire répond ${replySan} et gagne ${describeGain(gain)} (suite probable : ${lineText(node.fen, reply.pv)}).`,
+          `Sur ${replySan}, tu perds ${describeGain(gain)} (suite probable : ${lineText(node.fen, reply.pv)}).`,
+        ]),
+      );
+      cause = threat
+        ? `tu n'as pas paré la menace ${replySan}, qui gagne ${describeGain(gain)}`
+        : lostDefence
+          ? `${move.san} retire la défense de ${ton(lostDefence.type)}${NAMES[lostDefence.type]} en ${lostDefence.sq}`
+          : `${move.san} perd ${describeGain(gain)}`;
+    } else if (replySan) {
+      facts.push(
+        `La meilleure réponse est ${replySan} (suite probable : ${lineText(node.fen, reply.pv)}) ; l'évaluation passe de ${before?.lines[0] ? formatScore(before.lines[0]) : '?'} à ${formatScore(reply)}.`,
+      );
+    }
+    if (threat) {
+      facts.push(`${replySan} était déjà une menace avant ${move.san} : ton coup ne s'en occupe pas.`);
+    }
+    // Le bilan sur 6 demi-coups peut s'arrêter avant une reprise : le défenseur retiré reste la cause.
+    if (!cause && lostDefence) cause = `${move.san} retire la défense de ${ton(lostDefence.type)}${NAMES[lostDefence.type]} en ${lostDefence.sq}`;
+    if (lostDefence) {
+      facts.push(
+        `En jouant ${move.san}, ${article(move.piece)}${NAMES[move.piece]} ne défend plus ${article(lostDefence.type)}${NAMES[lostDefence.type]} en ${lostDefence.sq}, qui se retrouve en prise.`,
+      );
+    } else if (!theirMate) {
+      const h = hangingPieces(after, me).filter((x) => x.sq !== move.from)[0];
+      if (h) facts.push(`${cap(article(h.type))}${NAMES[h.type]} ${colorName(me, h.type)} en ${h.sq} est en prise.`);
     }
   }
 
   // --- Le meilleur coup ------------------------------------------------------
+  let better = '';
   if (bad && bestLine && bestSan && bestSan !== move.san) {
     const mate = mateFor(bestLine, me);
     const line = playLine(parent.fen, bestLine.pv, 6);
     const gain = netCaptures(line, me);
+    // Le meilleur coup empêchait-il la menace que le coup joué a laissée ?
+    const stops = threat && line[0] && !lineWorks(line[0].after, threat.pv, them, threat.mate);
     if (mate) {
       facts.push(`Le meilleur coup était ${bestSan}, avec un mat en ${mate} : ${lineText(parent.fen, bestLine.pv, mate * 2)}.`);
+      better = pick(parent.fen, [`tu avais un mat en ${mate} avec ${bestSan}`, `${bestSan} matait en ${mate}`]);
     } else if (gain.won.length) {
       facts.push(`Le meilleur coup était ${bestSan}, qui gagnait ${describeGain(gain)} : ${lineText(parent.fen, bestLine.pv)}.`);
+      better = `${bestSan} gagnait ${describeGain(gain)}`;
+    } else if (stops) {
+      facts.push(`Le meilleur coup était ${bestSan}, qui empêchait ${threat!.san} : ${lineText(parent.fen, bestLine.pv)}.`);
     } else {
       facts.push(`Le meilleur coup était ${bestSan} (${formatScore(bestLine)}) : ${lineText(parent.fen, bestLine.pv)}.`);
+    }
+    if (!better) {
+      better = stops
+        ? pick(parent.fen, [`il fallait ${bestSan}, qui l'empêchait`, `${bestSan} l'empêchait`])
+        : pick(parent.fen, [`il fallait jouer ${bestSan}`, `mieux valait ${bestSan}`, `le bon coup était ${bestSan}`]);
     }
     if (review.classification === 'miss' && parent.move) {
       facts.push(`L'adversaire venait de se tromper avec ${parent.move.san}, et ${bestSan} permettait d'en profiter.`);
@@ -276,5 +363,13 @@ export function explainMove(node: TreeNode): string[] {
     if (review.classification === 'best') facts.push(`${move.san} est le coup que le moteur préfère.`);
     else if (bestSan) facts.push(`Le moteur préférait ${bestSan}, mais ${move.san} est ${review.classification === 'excellent' ? 'presque aussi bon' : 'correct'}.`);
   }
-  return facts;
+
+  // --- Synthèse en une phrase (coups fautifs) -------------------------------
+  // (pas de majuscule forcée : la phrase peut commencer par un coup, « exd5 », qui reste en minuscule)
+  let summary: string | undefined;
+  if (bad && (cause || better)) {
+    const missed = review.classification === 'miss' && !cause;
+    summary = cause && better ? `${cause} ; ${better}.` : cause ? `${cause}.` : missed ? `occasion manquée : ${better}.` : `${better}.`;
+  }
+  return { summary, facts };
 }
