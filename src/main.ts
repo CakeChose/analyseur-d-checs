@@ -52,6 +52,8 @@ const engine = new Engine();
 /** Téléphone ou tablette : moins de cœurs, ça chauffe → analyses moins profondes. */
 const MOBILE = matchMedia('(pointer: coarse)').matches;
 const LIVE_DEPTH = MOBILE ? 14 : 18;
+/** Moteurs en parallèle (un par cœur, en laissant un cœur à la page) : 8 au plus, 2 sur téléphone. */
+const ENGINES = Math.min(MOBILE ? 2 : 8, Math.max(1, (navigator.hardwareConcurrency || 2) - 1));
 if (MOBILE) $<HTMLSelectElement>('depth').value = '12';
 
 // Téléphone : glisser le doigt sur l'échiquier (ailleurs que sur une pièce) pour changer de coup.
@@ -540,18 +542,24 @@ async function runAnalysis() {
     result = reviewGame(g, stored.positions, stored.depth);
   } else {
     setProgress(0, g.fens.length);
-    result = await analyseGame(
-      engine,
-      g,
-      depth,
-      (positions, moves) => {
-        applyAnalysis(positions, moves, depth);
-        setProgress(positions.length, g.fens.length);
-        $('analyse').textContent = `Analyse… ${positions.length}/${g.fens.length}`;
-        if (current && current.ply < positions.length && current.mainline) show(current);
-      },
-      () => token !== analysisToken,
-    );
+    // Le moteur de la page plus des moteurs temporaires : un par cœur (l'analyse en lot, elle, en met un par partie).
+    const helpers = Array.from({ length: ENGINES - 1 }, () => new Engine());
+    try {
+      result = await analyseGame(
+        [engine, ...helpers],
+        g,
+        depth,
+        (positions, moves, done) => {
+          applyAnalysis(positions, moves, depth);
+          setProgress(done, g.fens.length);
+          $('analyse').textContent = `Analyse… ${done}/${g.fens.length}`;
+          if (current && current.ply < positions.length && current.mainline) show(current);
+        },
+        () => token !== analysisToken,
+      );
+    } finally {
+      for (const h of helpers) h.destroy();
+    }
     if (result) cachePut(gameId(g), toFiche(g, pgn, result.positions, depth));
   }
   if (token !== analysisToken) return; // une autre partie a été chargée entre-temps
@@ -1542,8 +1550,7 @@ $('profile-stop').onclick = () => {
   $('profile-status').textContent = 'Mise en pause après la position en cours…';
 };
 $('profile-export').onclick = exportFile;
-// Un moteur par cœur, en laissant un cœur à la page (8 au plus par défaut, 2 sur téléphone).
-$<HTMLInputElement>('profile-engines').value = String(Math.min(MOBILE ? 2 : 8, Math.max(1, (navigator.hardwareConcurrency || 2) - 1)));
+$<HTMLInputElement>('profile-engines').value = String(ENGINES);
 
 // Version installée / hors ligne (pas en développement : le cache gênerait le rechargement à chaud).
 if (import.meta.env.PROD && 'serviceWorker' in navigator) {

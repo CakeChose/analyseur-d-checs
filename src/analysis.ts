@@ -264,28 +264,46 @@ export function reviewGame(game: Game, positions: PositionEval[], depth: number)
 }
 
 /**
- * Analyse complète : évalue chaque position dans l'ordre et note chaque coup
- * dès que la position d'après est connue (affichage progressif via `onProgress`).
+ * Analyse complète : évalue les positions en parallèle sur `engines` et note chaque coup
+ * dès que la position d'avant et celle d'après sont connues (affichage progressif via `onProgress`).
  */
 export async function analyseGame(
-  engine: Engine,
+  engines: Engine[],
   game: Game,
   depth: number,
-  onProgress: (positions: PositionEval[], moves: MoveReview[]) => void,
+  onProgress: (positions: PositionEval[], moves: MoveReview[], done: number) => void,
   isCancelled: () => boolean,
 ): Promise<GameAnalysis | null> {
+  // Les positions sont indépendantes : chaque moteur (un cœur chacun) prend la suivante.
+  // (Des blocs de positions consécutives par moteur n'allaient pas plus vite : 33 s contre 30 s.)
+  const total = game.fens.length;
+  let next = 0;
+  const evals: (PositionEval | undefined)[] = new Array(total);
   const positions: PositionEval[] = [];
   const moves: MoveReview[] = [];
-  for (const fen of game.fens) {
-    const ev = await evaluatePosition(engine, fen, depth);
-    if (isCancelled()) return null;
-    positions.push(ev);
-    const i = positions.length - 1;
-    if (i > 0) {
-      moves.push(reviewMove(game.moves[i - 1], positions[i - 1], ev, moves[i - 2]));
-      markBook(game, moves, i - 1);
+  let done = 0;
+  /** Note les coups dans l'ordre, dès que la position d'avant et celle d'après sont connues. */
+  const flush = () => {
+    while (positions.length < total && evals[positions.length]) {
+      positions.push(evals[positions.length]!);
+      const i = positions.length - 1;
+      if (i > 0) {
+        moves.push(reviewMove(game.moves[i - 1], positions[i - 1], positions[i], moves[i - 2]));
+        markBook(game, moves, i - 1);
+      }
     }
-    onProgress(positions, moves);
-  }
+    onProgress(positions, moves, done);
+  };
+  const worker = async (engine: Engine) => {
+    while (next < total && !isCancelled()) {
+      const i = next++;
+      evals[i] = await evaluatePosition(engine, game.fens[i], depth);
+      if (isCancelled()) return;
+      done++;
+      flush();
+    }
+  };
+  await Promise.all(engines.map(worker));
+  if (isCancelled() || positions.length < evals.length) return null;
   return { depth, positions, moves, accuracy: gameAccuracy(positions.map((p) => p.win)) };
 }

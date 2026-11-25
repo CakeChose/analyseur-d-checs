@@ -424,7 +424,7 @@ export async function analyseProfile(
     try {
       while (next < todo.length && !isCancelled()) {
         const { game, pgn } = todo[next++];
-        const res = await analyseGame(engine, game, depth, () => {}, isCancelled);
+        const res = await analyseGame([engine], game, depth, () => {}, isCancelled);
         if (!res) break;
         await cachePut(gameId(game), toFiche(game, pgn, res.positions, depth));
         onProgress(++done, total);
