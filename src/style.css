@@ -1756,3 +1756,7 @@ table.overview td {
   margin-top: 4px;
   line-height: 1.5;
 }
+.see-more {
+  display: block;
+  margin: 12px auto 0;
+}
