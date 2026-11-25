@@ -91,23 +91,20 @@
             <summary title="Réglages et sauvegarde">⋯</summary>
             <div class="settings-pop">
               <label
-                >Parties
+                >Parties par cadence
                 <select id="profile-count">
                   <option>20</option>
                   <option selected>50</option>
                   <option>100</option>
                 </select>
               </label>
-              <label
-                >Cadence
-                <select id="profile-speed">
-                  <option value="">Toutes</option>
-                  <option value="bullet">Bullet</option>
-                  <option value="blitz">Blitz</option>
-                  <option value="rapid">Rapide</option>
-                  <option value="daily">Par jour</option>
-                </select>
-              </label>
+              <fieldset id="profile-speeds" class="speed-checks">
+                <legend>Cadences à analyser</legend>
+                <label><input type="checkbox" value="rapid" checked /> Rapide</label>
+                <label><input type="checkbox" value="blitz" checked /> Blitz</label>
+                <label><input type="checkbox" value="bullet" checked /> Bullet</label>
+                <label><input type="checkbox" value="daily" checked /> Par jour</label>
+              </fieldset>
               <label title="Un moteur par cœur du processeur va plus vite, mais l'ordi chauffe davantage"
                 >Moteurs <input id="profile-engines" type="number" min="1" max="16"
               /></label>

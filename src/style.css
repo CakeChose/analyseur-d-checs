@@ -1206,6 +1206,44 @@ button.primary {
 .settings-pop input[type='number'] {
   width: 56px;
 }
+.speed-checks {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  margin: 0;
+  padding: 4px 10px 8px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 12px;
+}
+.speed-checks legend {
+  padding: 0 4px;
+}
+.settings-pop .speed-checks label {
+  justify-content: flex-start;
+  gap: 6px;
+}
+/* Onglets des cadences du profil */
+.speed-bar {
+  gap: 0;
+  border-bottom: 1px solid var(--border);
+}
+.speed-bar button {
+  border: 0;
+  border-bottom: 3px solid transparent;
+  border-radius: 0;
+  background: none;
+  padding: 8px 16px;
+  font-weight: 600;
+}
+.speed-bar button.active {
+  background: none;
+  color: var(--accent);
+  border-bottom-color: var(--accent);
+}
+.tab-elo {
+  font-weight: 400;
+  opacity: 0.7;
+}
 .profile-cols {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--side);

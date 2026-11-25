@@ -1018,8 +1018,8 @@ let accById = new Map<string, number>();
 const linkOf = (pgn: string) => pgn.match(/\[Link "([^"]+)"\]/)?.[1] ?? '';
 
 /** Les parties sont gardées 1 h dans le navigateur pour ne pas interroger chess.com à chaque visite. */
-async function loadGames(user: string, force = false): Promise<OnlineGame[]> {
-  const key = `parties:${user.toLowerCase()}`;
+async function loadGames(user: string, speeds: string[], force = false): Promise<OnlineGame[]> {
+  const key = `parties-cadences:${user.toLowerCase()}`;
   try {
     const cached = JSON.parse(localStorage.getItem(key) ?? 'null');
     if (!force && cached && Date.now() - cached.at < 3600_000) {
@@ -1028,7 +1028,8 @@ async function loadGames(user: string, force = false): Promise<OnlineGame[]> {
   } catch {
     /* cache illisible : on recharge */
   }
-  const games = await fetchChessCom(user, 50);
+  // 50 dernières parties de chaque cadence, pour que chaque onglet du profil ait ses statistiques.
+  const games = await fetchChessCom(user, 50, speeds);
   try {
     localStorage.setItem(key, JSON.stringify({ at: Date.now(), games }));
   } catch {
@@ -1088,22 +1089,28 @@ async function refreshProfile() {
   $('profile-name').textContent = user;
   await loadBook();
   if (!listGames.length) $('games-status').textContent = 'Chargement des parties…';
+  chessStats = await loadChessStats(user).catch(() => null);
+  // Cadences jouées d'après chess.com : inutile de parcourir tout l'historique pour une cadence jamais jouée.
+  const played = chessStats ? SPEED_ORDER.filter((sp) => chessStats!.speeds[sp]) : SPEED_ORDER;
   try {
-    listGames = await loadGames(user);
+    listGames = await loadGames(user, played);
     $('games-status').textContent = listGames.length ? '' : 'Aucune partie trouvée sur chess.com.';
   } catch (e) {
     $('games-status').textContent = `Impossible de récupérer les parties : ${(e as Error).message}.`;
   }
-  chessStats = await loadChessStats(user).catch(() => null);
   const summaries = await loadProfile(user);
   accById = new Map(summaries.map((s) => [s.id, s.accuracy]));
   renderGamesList();
-  // Une synthèse par cadence : on ne mélange pas bullet et rapide.
-  const counts = SPEED_ORDER.map((sp) => [sp, listGames.filter((g) => g.speed === sp).length] as const).filter(([, n]) => n);
-  if (!counts.some(([sp]) => sp === profileSpeed)) profileSpeed = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] ?? 'blitz';
+  // Une synthèse par cadence (un onglet chacune) : on ne mélange pas bullet et rapide.
+  if (!profileSpeed) {
+    const total = (sp: string) => {
+      const st = chessStats?.speeds[sp];
+      return st ? st.win + st.draw + st.loss : listGames.filter((g) => g.speed === sp).length;
+    };
+    profileSpeed = [...SPEED_ORDER].sort((a, b) => total(b) - total(a))[0];
+  }
   renderProfile(
     profileStats(summaries.filter((g) => g.speed === profileSpeed), profileMinLoss),
-    counts,
     listGames.filter((g) => g.speed === profileSpeed),
   );
 }
@@ -1228,22 +1235,6 @@ function endingsCard(list: OnlineGame[]): string {
     <table class="stats">${line('win', 'Victoires')}${line('loss', 'Défaites')}${line('draw', 'Nulles')}</table></section>`;
 }
 
-/** Toutes les cadences, sur tout l'historique du compte chess.com. */
-function speedsCard(): string {
-  if (!chessStats) return '';
-  const rows = SPEED_ORDER.filter((sp) => chessStats!.speeds[sp]).map((sp) => {
-    const s = chessStats!.speeds[sp];
-    const n = s.win + s.loss + s.draw;
-    const best = s.best ? `${s.best}${s.bestDate ? ` <span class="muted">${new Date(s.bestDate).toLocaleDateString('fr-FR')}</span>` : ''}` : '—';
-    return `<tr class="${sp === profileSpeed ? 'current' : ''}"><td>${SPEEDS[sp]}</td><td>${s.rating ?? '—'}</td><td>${best}</td>
-      <td>${n.toLocaleString('fr-FR')}</td><td>${vnd(s.win, s.draw, s.loss, ' / ', true)}</td><td>${n ? pct((100 * (s.win + s.draw / 2)) / n) : '—'}</td></tr>`;
-  });
-  if (!rows.length) return '';
-  return `<section class="card"><h2>Toutes les cadences</h2>
-    <p class="muted">Sur tout ton historique chess.com.${chessStats.puzzleBest ? ` Meilleur classement en problèmes : ${chessStats.puzzleBest}.` : ''}</p>
-    <table class="stats"><tr><th>Cadence</th><th>Elo</th><th>Meilleur</th><th>Parties</th><th>V / N / D</th><th>Score</th></tr>${rows.join('')}</table></section>`;
-}
-
 /** Seuil de la synthèse : perte minimale (points de chances de gain) pour qu'une erreur compte. */
 let profileMinLoss = 0;
 const LOSS_FILTERS: [number, string][] = [
@@ -1285,15 +1276,13 @@ function sparkline(values: number[], dates: string[], cls: string, fmt: (v: numb
 const shortDate = (d: Date | string) =>
   typeof d === 'string' ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
 
-function renderProfile(s: ProfileStats, counts: (readonly [string, number])[], list: OnlineGame[]) {
+function renderProfile(s: ProfileStats, list: OnlineGame[]) {
   const n = s.games.length;
   const u = profileName.toLowerCase();
-  const speedButtons =
-    counts.length > 1
-      ? `<div class="speed-bar">${counts
-          .map(([sp, c]) => `<button data-speed="${sp}" class="${sp === profileSpeed ? 'active' : ''}">${SPEEDS[sp]} (${c})</button>`)
-          .join('')}</div>`
-      : '';
+  const speedButtons = `<div class="speed-bar" role="tablist">${SPEED_ORDER.map((sp) => {
+    const elo = chessStats?.speeds[sp]?.rating;
+    return `<button role="tab" aria-selected="${sp === profileSpeed}" data-speed="${sp}" class="${sp === profileSpeed ? 'active' : ''}">${SPEEDS[sp]}${elo ? ` <span class="tab-elo">${elo}</span>` : ''}</button>`;
+  }).join('')}</div>`;
 
   // Milieu : les statistiques à lire.
   const chrono = [...list].reverse();
@@ -1327,7 +1316,6 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[], l
     </div>
     ${opponentCard(list)}
     ${endingsCard(list)}
-    ${speedsCard()}
     <section class="card">
       <h2>Ouvertures les plus jouées</h2>
       ${
@@ -1423,11 +1411,16 @@ $('view-profil').addEventListener('click', async (e) => {
 async function runProfile() {
   const user = profileUser();
   if (!user || profileRunning) return;
+  const status = $('profile-status');
+  const speeds = [...document.querySelectorAll<HTMLInputElement>('#profile-speeds input:checked')].map((i) => i.value);
+  if (!speeds.length) {
+    status.textContent = 'Coche au moins une cadence à analyser (menu ⋯).';
+    return;
+  }
   profileRunning = true;
   profileStop = false;
   $('profile-run').hidden = true;
   $('profile-stop').hidden = false;
-  const status = $('profile-status');
   const engines = Math.max(1, Number($<HTMLInputElement>('profile-engines').value) || 1);
   status.textContent = 'Récupération des parties sur chess.com…';
   $('profile-progress').hidden = false;
@@ -1438,7 +1431,7 @@ async function runProfile() {
     const res = await analyseProfile(
       user,
       Number($<HTMLSelectElement>('profile-count').value),
-      $<HTMLSelectElement>('profile-speed').value,
+      speeds,
       engines,
       PROFILE_DEPTH,
       (done, total) => {

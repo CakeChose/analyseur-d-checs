@@ -49,19 +49,29 @@ export async function fetchChessComStats(user: string): Promise<{ speeds: Record
   return { speeds, puzzleBest: d.tactics?.highest?.rating };
 }
 
-/** Les `max` dernières parties chess.com du joueur, d'une cadence donnée si `speed` est fourni. */
-export async function fetchChessCom(user: string, max = MAX, speed?: string): Promise<OnlineGame[]> {
+/**
+ * Les `max` dernières parties chess.com du joueur ; avec `speeds`, les `max` dernières de chacune
+ * de ces cadences (moins s'il n'y en a pas assez dans tout l'historique).
+ */
+export async function fetchChessCom(user: string, max = MAX, speeds?: string[]): Promise<OnlineGame[]> {
   const base = `https://api.chess.com/pub/player/${encodeURIComponent(user.toLowerCase())}`;
   const res = await fetch(`${base}/games/archives`);
   if (res.status === 404) throw new Error('joueur introuvable sur chess.com');
   if (!res.ok) throw new Error(`chess.com a répondu ${res.status}`);
   const { archives } = (await res.json()) as { archives: string[] };
   const games: OnlineGame[] = [];
+  const left = new Map(speeds?.map((sp) => [sp, max]));
+  const full = () => (speeds ? [...left.values()].every((n) => n <= 0) : games.length >= max);
   // Les archives sont mensuelles : on remonte depuis le mois le plus récent.
   for (const url of archives.slice().reverse()) {
+    if (full()) break;
     const month = await fetch(url).then((r) => r.json());
     for (const g of (month.games ?? []).slice().reverse()) {
-      if (!g.pgn || g.rules !== 'chess' || (speed && g.time_class !== speed)) continue;
+      if (!g.pgn || g.rules !== 'chess') continue;
+      if (speeds) {
+        if (!((left.get(g.time_class) ?? 0) > 0)) continue;
+        left.set(g.time_class, left.get(g.time_class)! - 1);
+      }
       const r = (x: string) => (x === 'win' ? 1 : ['agreed', 'repetition', 'stalemate', 'insufficient', '50move', 'timevsinsufficient'].includes(x) ? 0.5 : 0);
       const w = r(g.white.result);
       games.push({
@@ -74,9 +84,8 @@ export async function fetchChessCom(user: string, max = MAX, speed?: string): Pr
         speed: g.time_class,
         pgn: g.pgn,
       });
-      if (games.length >= max) return games;
+      if (full()) return games;
     }
-    if (games.length >= max) break;
   }
   return games;
 }

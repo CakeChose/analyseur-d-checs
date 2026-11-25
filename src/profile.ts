@@ -390,20 +390,21 @@ export async function loadProfile(username: string): Promise<GameSummary[]> {
 // ---------------------------------------------------------------------------
 
 /**
- * Analyse les `count` dernières parties chess.com de `username` avec `engines` moteurs en parallèle.
+ * Analyse les `count` dernières parties chess.com de `username` dans chacune des cadences `speeds`,
+ * avec `engines` moteurs en parallèle.
  * Les parties déjà analysées à cette profondeur ou plus sont sautées ; chaque partie finie est
  * enregistrée tout de suite (on peut fermer la page et reprendre).
  */
 export async function analyseProfile(
   username: string,
   count: number,
-  speed: string,
+  speeds: string[],
   engines: number,
   depth: number,
   onProgress: (done: number, total: number) => void,
   isCancelled: () => boolean,
 ): Promise<{ total: number; skipped: number }> {
-  const online = await fetchChessCom(username, count, speed || undefined);
+  const online = await fetchChessCom(username, count, speeds);
   const todo: { game: Game; pgn: string }[] = [];
   for (const g of online) {
     let game: Game;
