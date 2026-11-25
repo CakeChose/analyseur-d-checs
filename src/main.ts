@@ -182,13 +182,22 @@ function renderEval(node: TreeNode, ev: PositionEval, status: string) {
   const r = node.review;
   if (r && ['inaccuracy', 'mistake', 'miss', 'blunder'].includes(r.classification)) arrow(r.bestUci, 'green');
   arrow(ev.lines[0]?.pv[0], 'paleBlue');
-  board.setAutoShapes(shapes);
+  setShapes(shapes);
+}
+
+/**
+ * Flèches du moteur. L'analyse peut finir pendant qu'on est sur une autre page : sur un échiquier
+ * caché (taille nulle), chessground calculerait des coordonnées NaN. On les garde pour le retour (showView).
+ */
+function setShapes(shapes: DrawShape[]) {
+  if ($('board').offsetWidth) board.setAutoShapes(shapes);
+  else board.state.drawable.autoShapes = shapes;
 }
 
 function clearEngine() {
   $('engine-lines').innerHTML = '';
   $('engine-status').textContent = '';
-  board.setAutoShapes([]);
+  setShapes([]);
 }
 
 function updateEngine(node: TreeNode) {
@@ -899,6 +908,8 @@ export function showView(view: View) {
   $('layout').hidden = view === 'accueil';
   $('view-profil').hidden = view !== 'profil';
   $('view-analyse').hidden = !['partie', 'problemes', 'ouvertures'].includes(view);
+  // Échiquier de nouveau visible : on redessine (flèches gardées pendant qu'il était caché).
+  if (!$('view-analyse').hidden) board.redrawAll();
   // On quitte un exercice ou un entraînement en changeant de page.
   if (puzzle && view !== puzzle.view) puzzle = null;
   if (view !== 'ouvertures') stopTraining();
