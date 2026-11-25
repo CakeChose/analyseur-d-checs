@@ -492,9 +492,43 @@ select {
   border-radius: 6px;
   padding: 8px 10px;
 }
-.review .summary {
-  margin: 6px 0 0;
+.coach-card .review-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.score-badge {
+  flex: none;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.coach-text {
+  margin: 4px 0;
   font-size: 14px;
+}
+/* Carte du meilleur coup, sous celle du coup joué. */
+.coach-card.c-best {
+  margin-top: 8px;
+  padding: 6px 8px;
+  border-left: 4px solid var(--c);
+  border-radius: 4px;
+  background: var(--bg);
+}
+.coach-card.c-best .score-badge {
+  background: var(--panel);
+}
+.facts-more {
+  margin-top: 6px;
+  font-size: 13px;
+}
+.facts-more summary {
+  cursor: pointer;
+  color: var(--muted, inherit);
 }
 .facts {
   margin: 6px 0 0;

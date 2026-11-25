@@ -36,7 +36,7 @@ import {
   type ProfileStats,
 } from './profile';
 import { winPercent } from './winprob';
-import { explainMove, mateFor, playLine } from './explain';
+import { coachText, mateFor, playLine } from './explain';
 import { loadBook, openingName } from './openings';
 import { fetchChessCom, fetchChessComStats, fetchLichess, type OnlineGame, type SpeedStats } from './import';
 import { $, esc, groupCount, pct } from './ui';
@@ -403,33 +403,68 @@ function renderReview(node: TreeNode) {
   box.append(...moveReviewContent(node));
 }
 
-/** Commentaire d'un coup : verdict, précision, meilleur coup et faits vérifiés. */
+/** Une carte du coach : verdict + évaluation, une phrase, et « Voir la suite » (ligne du moteur depuis `from`). */
+function coachCard(title: string, score: string, text: string, from: TreeNode, pv: string[] | undefined): HTMLElement {
+  const card = Object.assign(document.createElement('div'), { className: 'coach-card' });
+  const head = Object.assign(document.createElement('div'), { className: 'review-title' });
+  head.append(title, Object.assign(document.createElement('span'), { className: 'score-badge', textContent: score }));
+  card.append(head, Object.assign(document.createElement('p'), { className: 'coach-text', textContent: text }));
+  if (pv?.length) {
+    const b = Object.assign(document.createElement('button'), { className: 'link', textContent: 'Voir la suite' });
+    b.onclick = () => showLine(from, pv);
+    card.append(b);
+  }
+  return card;
+}
+
+let lineTimer = 0;
+/** Joue la ligne du moteur sur l'échiquier, coup par coup, comme une variante (↑ pour revenir). */
+function showLine(from: TreeNode, pv: string[]) {
+  clearTimeout(lineTimer);
+  const nodes: TreeNode[] = [];
+  let n = from;
+  for (const u of pv.slice(0, 8)) {
+    const c = playMove(n, u.slice(0, 2), u.slice(2, 4), u[4]);
+    if (!c) break;
+    nodes.push((n = c));
+  }
+  if (!nodes.length) return;
+  renderMoves();
+  const step = (i: number) => {
+    if (i > 0 && current !== nodes[i - 1]) return; // l'utilisateur a navigué ailleurs : on s'arrête
+    show(nodes[i]);
+    if (i + 1 < nodes.length) lineTimer = window.setTimeout(() => step(i + 1), 700);
+  };
+  show(from);
+  lineTimer = window.setTimeout(() => step(0), 300);
+}
+
+const scoreOf = (ev: PositionEval | undefined) => (ev?.result ? (ev.result === '1/2-1/2' ? '½' : '#') : ev?.lines[0] ? formatScore(ev.lines[0]) : '');
+
+/** Commentaire d'un coup : carte du coup joué, carte du meilleur coup, puis le détail des faits. */
 function moveReviewContent(node: TreeNode): HTMLElement[] {
   const r = node.review!;
-  const best = r.bestUci ? uciToSan(node.parent!.fen, [r.bestUci])[0] : undefined;
-  const showBest = best && best !== node.move!.san && !['brilliant', 'great', 'best'].includes(r.classification);
-  const title = document.createElement('div');
-  title.className = 'review-title';
-  title.textContent = `${LABELS[r.classification].symbol} ${node.move!.san} ${VERDICT[r.classification]}`;
-  const detail = document.createElement('div');
-  detail.className = 'muted';
-  detail.textContent =
-    `Précision du coup : ${Math.round(r.accuracy)} %` +
-    (r.loss >= 1 ? ` · chances de gain perdues : ${r.loss.toFixed(1)} pts` : '') +
-    (showBest ? ` · meilleur coup : ${best}` : '');
-  // Explication : faits vérifiés par le moteur et les règles.
-  const { summary, facts } = explainMove(node);
-  const out: HTMLElement[] = [title, detail];
-  if (summary) {
-    const p = Object.assign(document.createElement('p'), { className: 'summary' });
-    p.append(Object.assign(document.createElement('b'), { textContent: 'En bref : ' }), summary);
-    out.push(p);
+  const coach = coachText(node)!;
+  const out: HTMLElement[] = [
+    coachCard(`${LABELS[r.classification].symbol} ${node.move!.san} ${VERDICT[r.classification]}`, scoreOf(node.eval), coach.played, node, node.eval?.lines[0]?.pv),
+  ];
+  const detail = Object.assign(document.createElement('div'), { className: 'muted' });
+  detail.textContent = `Précision du coup : ${Math.round(r.accuracy)} %` + (r.loss >= 1 ? ` · chances de gain perdues : ${r.loss.toFixed(1)} pts` : '');
+  out.push(detail);
+  if (coach.best) {
+    const best = coachCard(`${LABELS.best.symbol} ${coach.best.san} ${VERDICT.best}`, scoreOf(node.parent!.eval), coach.best.text, node.parent!, node.parent!.eval?.lines[0]?.pv);
+    best.classList.add('c-best');
+    out.push(best);
   }
+  // Le détail : faits vérifiés par le moteur et les règles, replié.
+  const facts = coach.facts;
   if (facts.length) {
-    const ul = document.createElement('ul');
-    ul.className = 'facts';
+    const more = document.createElement('details');
+    more.className = 'facts-more';
+    const ul = Object.assign(document.createElement('ul'), { className: 'facts' });
     for (const f of facts) ul.append(Object.assign(document.createElement('li'), { textContent: f }));
-    out.push(ul);
+    more.append(Object.assign(document.createElement('summary'), { textContent: 'Détails' }), ul);
+    out.push(more);
   }
   return out;
 }
