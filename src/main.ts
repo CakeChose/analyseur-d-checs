@@ -39,7 +39,7 @@ import {
 import { winPercent } from './winprob';
 import { coachText, mateFor, playLine } from './explain';
 import { loadBook, openingName } from './openings';
-import { fetchChessCom, fetchChessComStats, fetchLichess, type OnlineGame, type SpeedStats } from './import';
+import { chessComPlayerExists, fetchChessCom, fetchChessComStats, fetchLichess, type OnlineGame, type SpeedStats } from './import';
 import { $, esc, groupCount, pct } from './ui';
 import { openProblems, openRandomProblems, recordExo, renderProblems } from './problems';
 import { openOpenings, renderBookMoves, stopTraining, training, trainingMove } from './openings-view';
@@ -965,7 +965,7 @@ export function showView(view: View) {
   // On quitte un exercice ou un entraînement en changeant de page.
   if (puzzle && view !== puzzle.view) puzzle = null;
   if (view !== 'ouvertures') stopTraining();
-  $('go-profile').hidden = view === 'accueil';
+  $('go-profile').hidden = $('switch-profile').hidden = view === 'accueil';
   document.body.dataset.view = view;
   // Téléphone : sur une partie, la liste se replie pour garder l'échiquier en haut.
   if (matchMedia('(max-width: 760px)').matches) $<HTMLDetailsElement>('games-panel').open = view === 'profil';
@@ -1710,16 +1710,35 @@ export const go = {
 
 $('load').onclick = () => load($<HTMLTextAreaElement>('pgn').value);
 $('go-profile').onclick = () => showView(profileName ? 'profil' : 'accueil');
-$('change-profile').onclick = () => showView('accueil');
+$('switch-profile').onclick = () => showView('accueil');
 $('home-import').onclick = $('profile-open-import').onclick = () => importDialog().showModal();
-$('home-form').addEventListener('submit', (e) => {
+$('home-form').addEventListener('submit', async (e) => {
   e.preventDefault();
   const user = $<HTMLInputElement>('home-user').value.trim();
   if (!user) return;
+  const error = $('home-error');
+  const submit = $<HTMLButtonElement>('home-submit');
+  // On vérifie le pseudo avant de l'enregistrer : un pseudo faux ne remplace pas le profil actuel.
+  error.textContent = '';
+  submit.disabled = true;
+  submit.textContent = 'Vérification…';
+  try {
+    if (!(await chessComPlayerExists(user))) {
+      error.textContent = `Aucun joueur « ${user} » sur chess.com. Vérifie l'orthographe du pseudo.`;
+      return;
+    }
+  } catch (err) {
+    error.textContent = `Impossible de vérifier le pseudo (${(err as Error).message}). Vérifie ta connexion et réessaie.`;
+    return;
+  } finally {
+    submit.disabled = false;
+    submit.textContent = 'Voir mon profil';
+  }
   if (user.toLowerCase() !== profileName.toLowerCase()) listGames = [];
   saveUser(user);
   showView('profil');
 });
+$('home-user').addEventListener('input', () => ($('home-error').textContent = ''));
 $('home-restore').onclick = $('profile-restore').onclick = () => $('restore-file').click();
 $<HTMLInputElement>('restore-file').onchange = (e) => {
   const input = e.target as HTMLInputElement;

@@ -14,6 +14,7 @@
     <header class="topbar">
       <span class="brand"><img src="/icon-192.png" alt="" width="26" height="26" />Analyseur</span>
       <span class="spacer"></span>
+      <button id="switch-profile" title="Entrer un autre pseudo chess.com">Changer de profil</button>
       <button id="go-profile" class="primary">Profil</button>
     </header>
 
@@ -54,7 +55,8 @@
           <h2>Entrer mon pseudo chess.com</h2>
           <p class="muted">Tes dernières parties, tes statistiques et tes points à travailler.</p>
           <input id="home-user" type="text" placeholder="Pseudo chess.com" autocomplete="off" required />
-          <button class="primary">Voir mon profil</button>
+          <button id="home-submit" class="primary">Voir mon profil</button>
+          <p id="home-error" class="error" role="alert"></p>
         </form>
         <div class="card home-card">
           <h2>Importer une partie</h2>
@@ -81,7 +83,6 @@
         <section class="profile-head">
           <div>
             <h1 id="profile-name"></h1>
-            <button id="change-profile" class="link">Changer de profil</button>
           </div>
           <span class="spacer"></span>
           <button id="profile-open-import">Importer une partie</button>

@@ -35,6 +35,16 @@ export interface SpeedStats {
   draw: number;
 }
 
+/** Ce pseudo existe-t-il sur chess.com ? (lève une erreur si chess.com ne répond pas) */
+export async function chessComPlayerExists(user: string): Promise<boolean> {
+  // Pseudos chess.com : lettres, chiffres, _ et -. Inutile d'interroger chess.com pour le reste.
+  if (!/^[A-Za-z0-9_-]{3,25}$/.test(user)) return false;
+  const res = await fetch(`https://api.chess.com/pub/player/${encodeURIComponent(user.toLowerCase())}`);
+  if (res.status === 404 || res.status === 410) return false;
+  if (!res.ok) throw new Error(`chess.com a répondu ${res.status}`);
+  return true;
+}
+
 /** Elo actuel, meilleur Elo et bilan par cadence, plus le meilleur classement en problèmes. */
 export async function fetchChessComStats(user: string): Promise<{ speeds: Record<string, SpeedStats>; puzzleBest?: number }> {
   const res = await fetch(`https://api.chess.com/pub/player/${encodeURIComponent(user.toLowerCase())}/stats`);
