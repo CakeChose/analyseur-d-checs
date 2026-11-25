@@ -202,6 +202,9 @@ table.stats td {
   padding-left: 18px;
   font-size: 13px;
 }
+a.link {
+  color: var(--accent);
+}
 button.link {
   border: none;
   background: none;
@@ -1722,4 +1725,34 @@ table.overview td {
 }
 .hero-v a {
   color: inherit;
+}
+
+/* Profil : miniatures des coups brillants */
+.brilliants {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 14px;
+}
+.brilliant {
+  margin: 0;
+}
+.mini-board-btn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.mini-board {
+  width: 100%;
+  aspect-ratio: 1;
+}
+.mini-board cg-board square.last-move {
+  background-color: rgba(31, 169, 160, 0.55);
+}
+.brilliant figcaption {
+  font-size: 13px;
+  margin-top: 4px;
+  line-height: 1.5;
 }

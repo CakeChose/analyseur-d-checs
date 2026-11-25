@@ -185,6 +185,8 @@ export interface GameSummary {
   winningPly: number;
   /** Nombre de coups du joueur par classification (brillants, gaffes…). */
   counts: Partial<Record<Classification, number>>;
+  /** Coups brillants : position juste après le coup, pour les miniatures. */
+  brilliants: { ply: number; san: string; fen: string; from: string; to: string }[];
 }
 
 /**
@@ -230,6 +232,7 @@ export function summarize(fiche: Fiche, username: string): GameSummary | null {
     wasWinning: false,
     winningPly: 0,
     counts: {},
+    brilliants: [],
   };
   for (const fen of game.fens) summary.opening = openingName(fen) ?? summary.opening;
   if (!summary.opening) summary.opening = h.ECO ?? 'Inconnue';
@@ -242,6 +245,9 @@ export function summarize(fiche: Fiche, username: string): GameSummary | null {
     const phase = phaseOf(move.before, i + 1);
     summary.movesByPhase[phase]++;
     summary.counts[review.classification] = (summary.counts[review.classification] ?? 0) + 1;
+    if (review.classification === 'brilliant') {
+      summary.brilliants.push({ ply: i + 1, san: move.san, fen: move.after, from: move.from, to: move.to });
+    }
     if (!summary.wasWinning && pov(after.win) >= 80 && i >= 10) {
       summary.wasWinning = true;
       summary.winningPly = i + 1;

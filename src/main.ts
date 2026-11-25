@@ -1321,10 +1321,46 @@ function movesCard(s: ProfileStats, list: OnlineGame[]): string {
     return `<div class="move-count c-${c}"><span class="mc-sym">${LABELS[c].symbol}</span><span class="mc-n">${k.toLocaleString('fr-FR')}</span>
       <span class="muted">${LABELS[c].name}${moves ? ` · ${pct((100 * k) / moves)}` : ''}</span></div>`;
   }).join('');
-  return `<section class="card"><h2>Tes coups</h2>
+  return `<section class="card moves-card"><h2>Tes coups</h2>
     <p class="muted">Sur ${n > 1 ? `tes ${n} parties analysées` : 'ta partie analysée'} ${profileSpeed === 'all' ? 'toutes cadences confondues' : `en ${SPEEDS[profileSpeed].toLowerCase()}`} (${moves.toLocaleString('fr-FR')} coups).</p>
     <div class="move-counts">${cells}</div>
     ${ccFact ? `<div class="facts-grid">${ccFact}</div>` : ''}</section>`;
+}
+
+/** Miniatures de tous les coups brillants des parties analysées, du plus récent au plus ancien. */
+function brilliantsCard(s: ProfileStats): string {
+  const items = [...s.games]
+    .sort((a, b) => b.date.localeCompare(a.date))
+    .flatMap((g) => g.brilliants.map((b) => ({ g, b })));
+  if (!items.length) return '';
+  const cards = items
+    .map(({ g, b }) => {
+      const move = `${Math.ceil(b.ply / 2)}${b.ply % 2 ? '.' : '…'} ${esc(b.san)}`;
+      const chesscom = g.id.startsWith('https://www.chess.com/') ? ` · <a class="link" href="${esc(g.id)}" target="_blank" rel="noopener">chess.com ↗</a>` : '';
+      return `<figure class="brilliant">
+        <button class="mini-board-btn" data-open-fiche="${esc(g.id)}" data-ply="${b.ply}" title="Ouvrir l'analyse de la partie sur ce coup">
+          <div class="mini-board" data-fen="${esc(b.fen)}" data-last="${b.from}${b.to}" data-orient="${g.color === 'w' ? 'white' : 'black'}"></div></button>
+        <figcaption><b class="c-brilliant mc-sym">!!</b> <b>${move}</b><br>
+          <span class="muted">contre ${esc(g.opponent)} · ${shortDate(g.date)}${profileSpeed === 'all' ? ` · ${SPEEDS[g.speed] ?? g.speed}` : ''}</span><br>
+          <button class="link" data-open-fiche="${esc(g.id)}" data-ply="${b.ply}">Voir la partie</button>${chesscom}</figcaption></figure>`;
+    })
+    .join('');
+  return `<section class="card"><h2>Tes coups brillants (${items.length})</h2><div class="brilliants">${cards}</div></section>`;
+}
+
+/** Remplace chaque `.mini-board` par un petit échiquier en lecture seule, le dernier coup surligné. */
+function mountMiniBoards(root: HTMLElement) {
+  root.querySelectorAll<HTMLElement>('.mini-board').forEach((el) => {
+    const last = el.dataset.last!;
+    Chessground(el, {
+      fen: el.dataset.fen,
+      orientation: el.dataset.orient as 'white' | 'black',
+      viewOnly: true,
+      coordinates: false,
+      lastMove: [last.slice(0, 2), last.slice(2, 4)] as Key[],
+      drawable: { enabled: false, autoShapes: [{ orig: last.slice(2, 4) as Key, brush: 'blue' }] },
+    });
+  });
 }
 
 /** Seuil de la synthèse : perte minimale (points de chances de gain) pour qu'une erreur compte. */
@@ -1411,6 +1447,8 @@ function renderProfile(s: ProfileStats, list: OnlineGame[], summaries: GameSumma
       }
     </section>
     ${s.strengths.length ? `<section class="card"><h2>Points forts</h2><ul>${s.strengths.map((x) => `<li>${esc(x)}</li>`).join('')}</ul></section>` : ''}`;
+  $('profile-main').querySelector('.moves-card')?.insertAdjacentHTML('afterend', brilliantsCard(s));
+  mountMiniBoards($('profile-main'));
 
   // Droite : ce qu'on peut travailler (cartes cliquables).
   profileExamples = [];
@@ -1481,6 +1519,12 @@ $('view-profil').addEventListener('click', async (e) => {
     return;
   }
   if (t.closest('[data-run]')) return runProfile();
+  const of = t.closest<HTMLElement>('[data-open-fiche]');
+  if (of) {
+    const f = await cacheGet<Fiche>(of.dataset.openFiche!);
+    if (f) await openFiche(f, Number(of.dataset.ply));
+    return;
+  }
   const og = t.closest<HTMLElement>('[data-open-gi]');
   if (og) return openListGame(listGames[Number(og.dataset.openGi)]);
   const ex = t.closest<HTMLElement>('[data-ex]');
