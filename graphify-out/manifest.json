@@ -1,116 +1,152 @@
 {
   ".github/workflows/deploy.yml": {
-    "mtime": 1795454261.4789622,
-    "seen": 1795454830.2938402,
+    "mtime": 1795592252.5119634,
+    "seen": 1795592698.74703,
     "ast_hash": "673a036cdebefb9b815db700f9f043db",
     "semantic_hash": "673a036cdebefb9b815db700f9f043db"
   },
   "package.json": {
-    "mtime": 1795459665.1306884,
-    "seen": 1795533979.711264,
+    "mtime": 1795592252.5372412,
+    "seen": 1795592698.74703,
     "ast_hash": "95b84de9ae732718841a4a77e079742d",
     "semantic_hash": "95b84de9ae732718841a4a77e079742d"
   },
   "scripts/build-openings.mjs": {
-    "mtime": 1795538603.7125812,
-    "seen": 1795540951.1009843,
+    "mtime": 1795592252.546478,
+    "seen": 1795592698.74703,
     "ast_hash": "b140bde5db42e50b34052a11da15f870",
     "semantic_hash": "b140bde5db42e50b34052a11da15f870"
   },
   "scripts/copy-stockfish.mjs": {
-    "mtime": 1795452600.8484254,
-    "seen": 1795454830.2938402,
+    "mtime": 1795592252.546478,
+    "seen": 1795592698.74703,
     "ast_hash": "76144cf61a018439fad00124d8fe2c22",
     "semantic_hash": "76144cf61a018439fad00124d8fe2c22"
   },
   "src/analysis.ts": {
-    "mtime": 1795456981.4168472,
-    "seen": 1795457295.9580176,
+    "mtime": 1795592252.546478,
+    "seen": 1795592698.74703,
     "ast_hash": "948d0e9bfa35459993b3cebeb131649a",
     "semantic_hash": "948d0e9bfa35459993b3cebeb131649a"
   },
   "src/cache.ts": {
-    "mtime": 1795456981.4168472,
-    "seen": 1795457295.9580176,
+    "mtime": 1795592252.5509267,
+    "seen": 1795592698.74703,
     "ast_hash": "1bc7233850565854ede0230fc49ac843",
     "semantic_hash": "1bc7233850565854ede0230fc49ac843"
   },
   "src/engine.ts": {
-    "mtime": 1795452600.8493745,
-    "seen": 1795454830.2938402,
+    "mtime": 1795592252.560869,
+    "seen": 1795592698.74703,
     "ast_hash": "3750eed6e24c7cab55f4b9b15bd49c42",
     "semantic_hash": "3750eed6e24c7cab55f4b9b15bd49c42"
   },
   "src/explain.ts": {
-    "mtime": 1795456981.4168472,
-    "seen": 1795457295.9580176,
+    "mtime": 1795592252.560869,
+    "seen": 1795592698.74703,
     "ast_hash": "ea1c5ad41d9f3927c98e7d70d45e0ef3",
     "semantic_hash": "ea1c5ad41d9f3927c98e7d70d45e0ef3"
   },
   "src/game.ts": {
-    "mtime": 1795456981.4184954,
-    "seen": 1795457295.9580176,
+    "mtime": 1795592252.560869,
+    "seen": 1795592698.74703,
     "ast_hash": "afaf896fc9e31d9eb44711c6ab1a6a44",
     "semantic_hash": "afaf896fc9e31d9eb44711c6ab1a6a44"
   },
   "src/graph.ts": {
-    "mtime": 1795452947.1366699,
-    "seen": 1795454830.2938402,
+    "mtime": 1795592252.564016,
+    "seen": 1795592698.74703,
     "ast_hash": "b453309fba7f937af29ef81ddbc43048",
     "semantic_hash": "b453309fba7f937af29ef81ddbc43048"
   },
   "src/import.ts": {
-    "mtime": 1795539524.3189585,
-    "seen": 1795540951.1009843,
+    "mtime": 1795592252.5647767,
+    "seen": 1795592698.74703,
     "ast_hash": "f398d8420c6c48f234f2caea95d73e2a",
     "semantic_hash": "f398d8420c6c48f234f2caea95d73e2a"
   },
   "src/main.ts": {
-    "mtime": 1795540897.5847914,
-    "seen": 1795540951.1009843,
-    "ast_hash": "c965eb09e5996b86b57bcbc2f7f08cf5",
-    "semantic_hash": "c965eb09e5996b86b57bcbc2f7f08cf5"
+    "mtime": 1795592622.9655197,
+    "seen": 1795592698.74703,
+    "ast_hash": "6b10926f173955b9a66e8d68a3608537",
+    "semantic_hash": ""
   },
   "src/openings.ts": {
-    "mtime": 1795538603.717043,
-    "seen": 1795540951.1009843,
+    "mtime": 1795592252.56903,
+    "seen": 1795592698.74703,
     "ast_hash": "fb9d2e6c8632daf595659cb62afbf74d",
     "semantic_hash": "fb9d2e6c8632daf595659cb62afbf74d"
   },
   "src/tree.ts": {
-    "mtime": 1795452947.1386752,
-    "seen": 1795454830.2938402,
+    "mtime": 1795592252.5710504,
+    "seen": 1795592698.74703,
     "ast_hash": "29858844e9b089d84dcde10536e2be97",
     "semantic_hash": "29858844e9b089d84dcde10536e2be97"
   },
   "src/winprob.ts": {
-    "mtime": 1795452600.8513732,
-    "seen": 1795454830.2938402,
+    "mtime": 1795592252.5710504,
+    "seen": 1795592698.74703,
     "ast_hash": "017b66f51d54af2593b323438111078f",
     "semantic_hash": "017b66f51d54af2593b323438111078f"
   },
   "tsconfig.json": {
-    "mtime": 1795452386.759263,
-    "seen": 1795454830.2938402,
+    "mtime": 1795592252.5741777,
+    "seen": 1795592698.74703,
     "ast_hash": "7831be4e0658e2bca1737fe86e7c998e",
     "semantic_hash": "7831be4e0658e2bca1737fe86e7c998e"
   },
   "vite.config.ts": {
-    "mtime": 1795454261.4799614,
-    "seen": 1795454830.2938402,
+    "mtime": 1795592252.5762875,
+    "seen": 1795592698.74703,
     "ast_hash": "968289f3564c54fb4cab9302b05757bb",
     "semantic_hash": "968289f3564c54fb4cab9302b05757bb"
   },
   "src/profile.ts": {
-    "mtime": 1795537715.8681693,
-    "seen": 1795538602.1836438,
+    "mtime": 1795592252.5705414,
+    "seen": 1795592698.74703,
     "ast_hash": "4af381f021b0e5dc9f1e15b2c000ce65",
     "semantic_hash": "4af381f021b0e5dc9f1e15b2c000ce65"
   },
   "public/sw.js": {
-    "mtime": 1795533990.4790952,
-    "seen": 1795534615.2492895,
+    "mtime": 1795592252.546478,
+    "seen": 1795592698.74703,
     "ast_hash": "b52f05589d78a673c9039dcf6ac1a6a7",
     "semantic_hash": "b52f05589d78a673c9039dcf6ac1a6a7"
+  },
+  "Analyses/profil-echecs-Cake_Chose-2026-11-24.json": {
+    "mtime": 1795535699.0,
+    "seen": 1795592698.74703,
+    "ast_hash": "c89fc824ff0710660c8497a838c91ee9",
+    "semantic_hash": ""
+  },
+  "src/openings-view.ts": {
+    "mtime": 1795592533.9346952,
+    "seen": 1795592698.74703,
+    "ast_hash": "fb0431a73f040f84b7374855914d077c",
+    "semantic_hash": ""
+  },
+  "src/problems.ts": {
+    "mtime": 1795592500.4592078,
+    "seen": 1795592698.74703,
+    "ast_hash": "403edb94ced0e76363cd74432b57e7b5",
+    "semantic_hash": ""
+  },
+  "src/ui.ts": {
+    "mtime": 1795592499.9524302,
+    "seen": 1795592698.74703,
+    "ast_hash": "8093b09a147d856619a897d936c299cc",
+    "semantic_hash": ""
+  },
+  "lien du site.txt": {
+    "mtime": 1795454645.0,
+    "seen": 1795592698.74703,
+    "ast_hash": "cba774c7eb425825857f0a8ef3d6028b",
+    "semantic_hash": ""
+  },
+  "package-lock.json": {
+    "mtime": 1795592252.5360253,
+    "seen": 1795592698.74703,
+    "ast_hash": "07a76793e9d58a9066f54aae40f6aae1",
+    "semantic_hash": ""
   }
 }

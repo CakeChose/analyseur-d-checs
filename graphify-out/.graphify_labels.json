@@ -1,1 +1,9 @@
-{"0": "Profil joueur", "1": "Analyse et notes des coups", "2": "Workflow de déploiement", "3": "Dépendances npm", "4": "Interface (main.ts)", "5": "Interface (main.ts)", "6": "Interface (main.ts)", "7": "Explications des coups", "8": "Interface (main.ts)", "9": "Config TypeScript", "10": "Interface (main.ts)", "11": "Arbre de coups", "12": "Import en ligne", "13": "Interface (main.ts)", "14": "Base et catalogue d'ouvertures", "15": "Interface (main.ts)", "16": "Mode hors ligne (service worker)"}
+{
+  "0": "Profil joueur",
+  "1": "Analyse et notes des coups",
+  "2": "Workflow de déploiement",
+  "3": "Dépendances npm",
+  "9": "Config TypeScript",
+  "11": "Arbre de coups",
+  "16": "Mode hors ligne (service worker)"
+}

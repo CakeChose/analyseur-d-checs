@@ -36,12 +36,13 @@ import {
 } from './profile';
 import { winPercent } from './winprob';
 import { explainMove, mateFor, playLine } from './explain';
-import { loadBook, loadCatalogue, openingName, type CatalogueLine } from './openings';
+import { loadBook, openingName } from './openings';
 import { fetchChessCom, fetchChessComStats, fetchLichess, type OnlineGame, type SpeedStats } from './import';
+import { $, esc, groupCount, pct } from './ui';
+import { openProblems, openRandomProblems, recordExo, renderProblems } from './problems';
+import { openOpenings, renderBookMoves, stopTraining, training, trainingMove } from './openings-view';
 
-const $ = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
-
-const board = Chessground($('board'), {
+export const board = Chessground($('board'), {
   coordinates: true,
   movable: { free: false, showDests: true, events: { after: onUserMove } },
   premovable: { enabled: false },
@@ -74,8 +75,8 @@ $('board').addEventListener('touchend', (e) => {
 });
 
 let game: Game | null = null;
-let root: TreeNode | null = null;
-let current: TreeNode | null = null;
+export let root: TreeNode | null = null;
+export let current: TreeNode | null = null;
 let analysis: GameAnalysis | null = null;
 /** Texte PGN de la partie affichée (gardé tel quel dans sa fiche). */
 let currentPgn = '';
@@ -112,7 +113,7 @@ function onUserMove(orig: Key, dest: Key) {
   show(node);
 }
 
-function show(node: TreeNode) {
+export function show(node: TreeNode) {
   current = node;
   const m = node.move;
   const turn = node.ply % 2 === 0 ? 'white' : 'black';
@@ -331,7 +332,7 @@ function isInside(node: TreeNode, ancestor: TreeNode): boolean {
   return false;
 }
 
-function renderMoves() {
+export function renderMoves() {
   const list = $('moves');
   list.innerHTML = '';
   if (!root) return;
@@ -474,7 +475,6 @@ function renderReport() {
   $('retry-b').onclick = () => startPuzzles('b');
 }
 
-const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
 // ---------------------------------------------------------------------------
 // Analyse complète
@@ -664,7 +664,7 @@ async function showPuzzle() {
   show(target.parent!);
 }
 
-function startPuzzleQueue(queue: { id: string; ply: number }[], view: View = 'partie', blind = false) {
+export function startPuzzleQueue(queue: { id: string; ply: number }[], view: View = 'partie', blind = false) {
   if (!queue.length) return false;
   puzzle = { queue, index: 0, state: 'try', view, blind, line: [], step: 0 };
   showView(view);
@@ -880,21 +880,20 @@ let profileRunning = false;
 let profileStop = false;
 /** Exemples cliquables de la synthèse affichée (index = attribut data-ex). */
 let profileExamples: MistakeRecord[] = [];
-let profileCauses: ProfileStats['causes'] = [];
+export let profileCauses: ProfileStats['causes'] = [];
+/** Toutes les erreurs du profil (cadence affichée), pour les problèmes aléatoires. */
+export let profileMistakes: MistakeRecord[] = [];
 
-type View = 'accueil' | 'profil' | 'partie' | 'problemes' | 'ouvertures';
+export type View ='accueil' | 'profil' | 'partie' | 'problemes' | 'ouvertures';
 
-function showView(view: View) {
+export function showView(view: View) {
   $('view-accueil').hidden = view !== 'accueil';
   $('layout').hidden = view === 'accueil';
   $('view-profil').hidden = view !== 'profil';
   $('view-analyse').hidden = !['partie', 'problemes', 'ouvertures'].includes(view);
   // On quitte un exercice ou un entraînement en changeant de page.
   if (puzzle && view !== puzzle.view) puzzle = null;
-  if (view !== 'ouvertures') {
-    training = null;
-    document.body.classList.remove('training');
-  }
+  if (view !== 'ouvertures') stopTraining();
   $('go-profile').hidden = view === 'accueil';
   document.body.dataset.view = view;
   // Téléphone : sur une partie, la liste se replie pour garder l'échiquier en haut.
@@ -924,7 +923,7 @@ function renderPlayers() {
 const importDialog = () => $<HTMLDialogElement>('import-dialog');
 
 /** Pseudo chess.com du profil (retenu dans le navigateur). */
-let profileName = '';
+export let profileName = '';
 const profileUser = () => profileName;
 
 function saveUser(user: string) {
@@ -1183,7 +1182,6 @@ const LOSS_FILTERS: [number, string][] = [
   [THRESHOLDS.mistake, `Gaffes seulement (≥ ${THRESHOLDS.mistake} pts)`],
 ];
 
-const pct = (x: number) => `${Math.round(x)} %`;
 const SPEED_ORDER = ['rapid', 'blitz', 'bullet', 'daily'];
 const SPEEDS: Record<string, string> = { bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapide', daily: 'Par jour' };
 /** Cadence affichée dans la synthèse du profil. */
@@ -1316,13 +1314,6 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[], l
        <button class="primary" data-run>Analyser toutes les parties</button></section>`;
 }
 
-/** Nombre d'occurrences de chaque valeur. */
-function groupCount(xs: string[]): Map<string, number> {
-  const m = new Map<string, number>();
-  for (const x of xs) m.set(x, (m.get(x) ?? 0) + 1);
-  return m;
-}
-
 $('view-profil').addEventListener('change', (e) => {
   const t = e.target as HTMLSelectElement;
   if (t.id !== 'profile-minloss') return;
@@ -1426,434 +1417,6 @@ async function importFile(file: File) {
 }
 
 // ---------------------------------------------------------------------------
-// Page Problèmes : exercices tirés de tes erreurs, par type ou au hasard, avec suivi de réussite
-// ---------------------------------------------------------------------------
-
-/**
- * Suivi de chaque problème (« partie#demi-coup ») : réussites, ratés, et réussites d'affilée
- * (`run`, remis à zéro par un raté). Gardé dans le navigateur.
- */
-type ExoStats = Record<string, { ok: number; ko: number; run?: number }>;
-/** Score global : réussis, ratés, série en cours, meilleure série. */
-type ExoScore = { ok: number; ko: number; streak: number; best: number };
-const exoKey = () => `exos:${profileName.toLowerCase()}`;
-const scoreKey = () => `exos-score:${profileName.toLowerCase()}`;
-
-function readJson<T>(key: string, fallback: T): T {
-  try {
-    return JSON.parse(localStorage.getItem(key) ?? 'null') ?? fallback;
-  } catch {
-    return fallback;
-  }
-}
-function writeJson(key: string, value: unknown) {
-  try {
-    localStorage.setItem(key, JSON.stringify(value));
-  } catch {
-    /* stockage indisponible : le suivi ne sera pas gardé */
-  }
-}
-const exoStats = () => readJson<ExoStats>(exoKey(), {});
-const exoScore = () => readJson<ExoScore>(scoreKey(), { ok: 0, ko: 0, streak: 0, best: 0 });
-
-/** Seul le premier essai d'un problème compte (voir puzzleMove). */
-function recordExo(id: string, ply: number, ok: boolean) {
-  const s = exoStats();
-  const e = (s[`${id}#${ply}`] ??= { ok: 0, ko: 0, run: 0 });
-  // Anciennes entrées sans `run` : on le déduit (que des réussites → autant d'affilée).
-  e.run ??= e.ko ? 0 : e.ok;
-  if (ok) {
-    e.ok++;
-    e.run++;
-  } else {
-    e.ko++;
-    e.run = 0;
-  }
-  writeJson(exoKey(), s);
-  const sc = exoScore();
-  if (ok) {
-    sc.ok++;
-    sc.streak++;
-    sc.best = Math.max(sc.best, sc.streak);
-  } else {
-    sc.ko++;
-    sc.streak = 0;
-  }
-  writeJson(scoreKey(), sc);
-}
-
-/** Les 5 états d'un problème : jamais essayé, raté, réussi 1, 2 ou 3 fois d'affilée (validé). */
-type ExoStatus = 'new' | 'failed' | 'run1' | 'run2' | 'done';
-const STATUS_LABEL: Record<ExoStatus, string> = {
-  new: 'Jamais essayé',
-  failed: 'Raté',
-  run1: 'Réussi 1 fois',
-  run2: 'Réussi 2 fois de suite',
-  done: 'Validé (3 fois de suite)',
-};
-const STATUSES = Object.keys(STATUS_LABEL) as ExoStatus[];
-
-function exoStatus(stats: ExoStats, m: { id: string; ply: number }): ExoStatus {
-  const e = stats[`${m.id}#${m.ply}`];
-  if (!e) return 'new';
-  const run = e.run ?? (e.ko ? 0 : e.ok);
-  return run >= 3 ? 'done' : run === 2 ? 'run2' : run === 1 ? 'run1' : 'failed';
-}
-
-/** Toutes les erreurs du profil (cadence affichée), pour les problèmes aléatoires. */
-let profileMistakes: MistakeRecord[] = [];
-/** Cause travaillée (index dans profileCauses), ou -2 pour les problèmes aléatoires. */
-let problemCause = -1;
-
-function shuffle<T>(xs: T[]): T[] {
-  for (let i = xs.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [xs[i], xs[j]] = [xs[j], xs[i]];
-  }
-  return xs;
-}
-
-/** Problèmes d'un type d'erreur : les jamais réussis d'abord ; les validés ne sont plus proposés. */
-function openProblems(i: number) {
-  const c = profileCauses[i];
-  if (!c) return;
-  problemCause = i;
-  const stats = exoStats();
-  const rank: Record<ExoStatus, number> = { new: 0, failed: 0, run1: 1, run2: 2, done: 3 };
-  const queue = [...c.examples]
-    .reverse()
-    .filter((m) => exoStatus(stats, m) !== 'done')
-    .sort((a, b) => rank[exoStatus(stats, a)] - rank[exoStatus(stats, b)])
-    .map((m) => ({ id: m.id, ply: m.ply }));
-  if (!startPuzzleQueue(queue, 'problemes')) showView('problemes');
-  renderProblems();
-}
-
-/** Problèmes au hasard parmi les erreurs, ratés et gaffes (pas les imprécisions), sans dire le type. */
-function openRandomProblems() {
-  problemCause = -2;
-  const stats = exoStats();
-  const seen = new Set<string>();
-  const pool = profileMistakes.filter((m) => {
-    const k = `${m.id}#${m.ply}`;
-    if (m.classification === 'inaccuracy' || seen.has(k) || exoStatus(stats, m) === 'done') return false;
-    seen.add(k);
-    return true;
-  });
-  if (startPuzzleQueue(shuffle(pool).map((m) => ({ id: m.id, ply: m.ply })), 'problemes', true)) renderProblems();
-  else {
-    showView('problemes');
-    renderProblems();
-  }
-}
-
-/** Petite barre des états (gris, rouge, verts) d'un ensemble de problèmes. */
-function statusBar(items: { id: string; ply: number }[], stats: ExoStats): string {
-  const counts = groupCount(items.map((m) => exoStatus(stats, m)));
-  return `<span class="st-bar">${STATUSES.map((st) => {
-    const n = counts.get(st) ?? 0;
-    return n ? `<span class="st-${st}" style="flex:${n}" title="${STATUS_LABEL[st]} : ${n}"></span>` : '';
-  }).join('')}</span>`;
-}
-
-function renderProblems() {
-  const stats = exoStats();
-  const sc = exoScore();
-  const randomPool = profileMistakes.filter((m) => m.classification !== 'inaccuracy');
-  const keys = new Set(randomPool.map((m) => `${m.id}#${m.ply}`));
-  const unique = [...keys].map((k) => ({ id: k.slice(0, k.lastIndexOf('#')), ply: Number(k.slice(k.lastIndexOf('#') + 1)) }));
-  const counts = groupCount(unique.map((m) => exoStatus(stats, m)));
-  const left = unique.length - (counts.get('done') ?? 0);
-  const rows = profileCauses
-    .map((c, i) => {
-      if (c.tag === 'gache') return '';
-      const done = c.examples.filter((m) => exoStatus(stats, m) === 'done').length;
-      return `<button class="op-row prob-row ${i === problemCause ? 'current' : ''}" data-ptag="${i}">
-        <span class="op-name">${TAGS[c.tag]}</span>${statusBar(c.examples, stats)}
-        <span class="muted" title="Problèmes validés">${done}/${c.count}</span></button>`;
-    })
-    .join('');
-  $('side-problems').innerHTML = `<h2>Problèmes</h2>
-    <div class="score-grid">
-      <div><div class="muted">Réussis</div><b class="t-win">${sc.ok}</b></div>
-      <div><div class="muted">Ratés</div><b class="t-loss">${sc.ko}</b></div>
-      <div><div class="muted">Série</div><b>${sc.streak}</b></div>
-      <div><div class="muted">Meilleure série</div><b>${sc.best}</b></div>
-    </div>
-    <button class="primary ${problemCause === -2 ? 'active' : ''}" data-random>Problèmes aléatoires (${left})</button>
-    <p class="muted">Au hasard parmi tes erreurs et gaffes, sans indice : trouve le meilleur coup.
-      Un problème réussi 3 fois de suite est validé et n'est plus proposé.</p>
-    <div class="st-legend">${STATUSES.map((st) => `<span><i class="st-${st}"></i>${STATUS_LABEL[st]} <b>${counts.get(st) ?? 0}</b></span>`).join('')}</div>
-    <h3>Par type d'erreur</h3>
-    <div class="op-list">${rows}</div>`;
-}
-
-$('side-problems').addEventListener('click', (e) => {
-  const t = e.target as HTMLElement;
-  if (t.closest('[data-random]')) return openRandomProblems();
-  const b = t.closest<HTMLElement>('[data-ptag]');
-  if (b) openProblems(Number(b.dataset.ptag));
-});
-
-// ---------------------------------------------------------------------------
-// Page Ouvertures : mes ouvertures, catalogue, ligne choisie, entraînement
-// ---------------------------------------------------------------------------
-
-/** Ligne du catalogue affichée (null : la liste des ouvertures). */
-let openingLine: CatalogueLine | null = null;
-let openingQuery = '';
-/** Ouvertures de tes parties analysées, les plus jouées d'abord. */
-let myOpenings: { name: string; color: 'w' | 'b'; games: number; score: number }[] = [];
-/** Entraînement sur une ligne : le site joue l'adversaire, il faut retrouver les coups de la ligne. */
-let training: { moves: string[]; color: 'w' | 'b'; index: number; errors: number } | null = null;
-
-const shortName = (name: string) => (name.includes(':') ? name.slice(name.indexOf(':') + 1).trim() : name);
-const linePgn = (moves: string) =>
-  moves
-    .split(' ')
-    .map((m, i) => (i % 2 ? m : `${i / 2 + 1}. ${m}`))
-    .join(' ');
-
-async function openOpenings() {
-  openingLine = null;
-  load('', '', 'ouvertures');
-  const games = profileName ? await loadProfile(profileName) : [];
-  const groups = new Map<string, { name: string; color: 'w' | 'b'; games: number; points: number }>();
-  for (const g of games) {
-    const k = `${g.opening}|${g.color}`;
-    const e = groups.get(k) ?? { name: g.opening, color: g.color, games: 0, points: 0 };
-    e.games++;
-    e.points += g.result === 'win' ? 1 : g.result === 'draw' ? 0.5 : 0;
-    groups.set(k, e);
-  }
-  myOpenings = [...groups.values()]
-    .map((o) => ({ name: o.name, color: o.color, games: o.games, score: (100 * o.points) / o.games }))
-    .sort((a, b) => b.games - a.games);
-  renderOpenings();
-}
-
-const lineButton = (l: CatalogueLine, i: number, short: boolean) =>
-  `<button class="op-row" data-line="${i}"><span class="muted op-eco">${l[0]}</span><span class="op-name">${esc(short ? shortName(l[1]) : l[1])}</span></button>`;
-
-let families: Map<string, number[]> | null = null;
-
-/** Le catalogue rangé par famille (« Sicilian Defense » → ses variantes). */
-function familyIndex(cat: CatalogueLine[]): Map<string, number[]> {
-  if (!families) {
-    families = new Map();
-    cat.forEach((l, i) => {
-      const f = l[1].split(':')[0];
-      families!.set(f, [...(families!.get(f) ?? []), i]);
-    });
-  }
-  return families;
-}
-
-async function renderOpenings() {
-  const el = $('side-openings');
-  if (openingLine) return renderOpeningLine();
-  const mine = myOpenings.length
-    ? myOpenings
-        .slice(0, 8)
-        .map(
-          (o, i) =>
-            `<button class="op-row" data-mine="${i}"><span class="dot ${o.color === 'w' ? 'white' : 'black'}"></span>
-             <span class="op-name">${esc(o.name.slice(o.name.indexOf(' ') + 1))}</span>
-             <span class="muted">${o.games} · ${pct(o.score)}</span></button>`,
-        )
-        .join('')
-    : '<p class="muted">Analyse tes parties pour voir tes ouvertures ici.</p>';
-  el.innerHTML = `<h2>Ouvertures</h2>
-    <h3>Mes ouvertures</h3><div class="op-list">${mine}</div>
-    <h3>Toutes les ouvertures</h3>
-    <input id="op-search" type="search" placeholder="Chercher : Najdorf, Caro-Kann, B90…" autocomplete="off" />
-    <div class="op-list op-all"></div>`;
-  $<HTMLInputElement>('op-search').value = openingQuery;
-  await renderAllOpenings();
-}
-
-/** La liste « Toutes les ouvertures » : familles repliées, ou résultats de la recherche. */
-async function renderAllOpenings() {
-  const cat = await loadCatalogue();
-  const list = document.querySelector('.op-all');
-  if (!list) return;
-  const q = openingQuery.trim().toLowerCase();
-  if (q) {
-    const hits = cat.flatMap((l, i) => (`${l[0]} ${l[1]}`.toLowerCase().includes(q) ? [i] : [])).slice(0, 60);
-    list.innerHTML = hits.length ? hits.map((i) => lineButton(cat[i], i, false)).join('') : '<p class="muted">Aucune ouverture trouvée.</p>';
-    return;
-  }
-  list.innerHTML = [...familyIndex(cat)]
-    .map(([f, idx]) => `<details class="op-family"><summary>${esc(f)} <span class="muted">${idx.length}</span></summary><div class="op-vars" data-family="${esc(f)}"></div></details>`)
-    .join('');
-}
-
-async function selectLine(i: number, color: 'w' | 'b' = 'w') {
-  const cat = await loadCatalogue();
-  openingLine = cat[i];
-  training = null;
-  document.body.classList.remove('training');
-  load(linePgn(openingLine[2]), '', 'ouvertures');
-  board.set({ orientation: color === 'w' ? 'white' : 'black' });
-  $('evalbar').classList.toggle('flipped', color === 'b');
-  go.last();
-  renderOpenings();
-}
-
-function renderOpeningLine() {
-  if (!openingLine) return;
-  const [eco, name, moves] = openingLine;
-  const mine = myOpenings.filter((o) => o.name === `${eco} ${name}`);
-  $('side-openings').innerHTML = `<button class="link" data-back>‹ Toutes les ouvertures</button>
-    <h2>${esc(name)}</h2>
-    <div class="muted">${eco} · ${moves.split(' ').length} demi-coups de théorie</div>
-    ${mine.map((o) => `<p>Jouée ${o.games} fois avec les ${o.color === 'w' ? 'Blancs' : 'Noirs'} · ${pct(o.score)} des points</p>`).join('')}
-    <div class="train-bar">
-      <button class="primary" data-train-color="w">S'entraîner avec les Blancs</button>
-      <button data-train-color="b">avec les Noirs</button>
-    </div>
-    <p id="train-msg" class="train-msg"></p>
-    <div class="no-training"><h3>Suites de théorie</h3><div id="book-moves" class="op-list"></div></div>`;
-  renderBookMoves();
-}
-
-/** Coups de théorie depuis la position affichée : les coups légaux qui mènent à une position connue. */
-function renderBookMoves() {
-  const el = document.getElementById('book-moves');
-  if (!el || !current) return;
-  const items = new Chess(current.fen)
-    .moves({ verbose: true })
-    .flatMap((m) => {
-      const name = openingName(m.after);
-      return name ? [{ m, name }] : [];
-    });
-  el.innerHTML = items.length
-    ? items
-        .map(
-          ({ m, name }) =>
-            `<button class="op-row" data-book="${m.from}${m.to}${m.promotion ?? ''}"><b>${m.san}</b><span class="op-name muted">${esc(name.slice(name.indexOf(' ') + 1))}</span></button>`,
-        )
-        .join('')
-    : '<p class="muted">Fin de la théorie connue ici : regarde les suites de Stockfish.</p>';
-}
-
-$('side-openings').addEventListener('input', (e) => {
-  const t = e.target as HTMLInputElement;
-  if (t.id !== 'op-search') return;
-  openingQuery = t.value;
-  renderAllOpenings();
-});
-
-$('side-openings').addEventListener('click', async (e) => {
-  const t = e.target as HTMLElement;
-  if (t.closest('[data-back]')) {
-    openingLine = null;
-    training = null;
-    document.body.classList.remove('training');
-    return renderOpenings();
-  }
-  // Une famille s'ouvre : on remplit ses variantes à ce moment-là (3 900 lignes en tout).
-  const fam = t.closest('.op-family');
-  if (t.closest('summary') && fam) {
-    const vars = fam.querySelector<HTMLElement>('.op-vars')!;
-    if (!vars.childElementCount) {
-      const cat = await loadCatalogue();
-      vars.innerHTML = familyIndex(cat).get(vars.dataset.family!)!.map((i) => lineButton(cat[i], i, true)).join('');
-    }
-    return;
-  }
-  const line = t.closest<HTMLElement>('[data-line]');
-  if (line) return selectLine(Number(line.dataset.line));
-  const mine = t.closest<HTMLElement>('[data-mine]');
-  if (mine) {
-    const o = myOpenings[Number(mine.dataset.mine)];
-    const cat = await loadCatalogue();
-    const i = cat.findIndex((l) => `${l[0]} ${l[1]}` === o.name);
-    if (i >= 0) selectLine(i, o.color);
-    return;
-  }
-  const book = t.closest<HTMLElement>('[data-book]');
-  if (book && current) {
-    const u = book.dataset.book!;
-    const node = playMove(current, u.slice(0, 2), u.slice(2, 4), u[4]);
-    if (node) {
-      renderMoves();
-      show(node);
-    }
-    return;
-  }
-  const tc = t.closest<HTMLElement>('[data-train-color]');
-  if (tc) startTraining(tc.dataset.trainColor as 'w' | 'b');
-});
-
-function trainingMsg(text: string) {
-  const el = document.getElementById('train-msg');
-  if (el) el.textContent = text;
-}
-
-function startTraining(color: 'w' | 'b') {
-  if (!openingLine || !root) return;
-  training = { moves: openingLine[2].split(' '), color, index: 0, errors: 0 };
-  document.body.classList.add('training');
-  board.set({ orientation: color === 'w' ? 'white' : 'black' });
-  $('evalbar').classList.toggle('flipped', color === 'b');
-  show(root);
-  trainingStep();
-}
-
-/** Tour suivant : le site joue le coup de l'adversaire, ou attend le tien. */
-function trainingStep() {
-  const t = training;
-  if (!t || !current) return;
-  if (t.index >= t.moves.length) {
-    trainingMsg(`Ligne terminée ${t.errors ? `avec ${t.errors} erreur${t.errors > 1 ? 's' : ''}` : 'sans faute'} !`);
-    training = null;
-    document.body.classList.remove('training');
-    show(current);
-    return;
-  }
-  const turn = current.ply % 2 === 0 ? 'w' : 'b';
-  if (turn !== t.color) {
-    trainingMsg('L\'adversaire joue…');
-    setTimeout(() => {
-      if (training !== t || !current?.children[0]) return;
-      t.index++;
-      show(current.children[0]);
-      trainingStep();
-    }, 450);
-  } else {
-    trainingMsg(`À toi : trouve le coup de la ligne (${t.index + 1}/${t.moves.length}).`);
-  }
-}
-
-function trainingMove(orig: Key, dest: Key) {
-  const t = training!;
-  const node = current!;
-  const piece = new Chess(node.fen).get(orig as Square);
-  const promo = piece?.type === 'p' && (dest[1] === '8' || dest[1] === '1') ? 'q' : undefined;
-  let san = '';
-  try {
-    san = new Chess(node.fen).move({ from: orig, to: dest, promotion: promo }).san;
-  } catch {
-    return show(node);
-  }
-  const next = node.children[0];
-  if (san === t.moves[t.index] && next) {
-    t.index++;
-    show(next);
-    return trainingStep();
-  }
-  t.errors++;
-  trainingMsg(`${san} n'est pas le coup de la ligne : c'était ${t.moves[t.index]}. Rejoue-le.`);
-  const hint = [{ orig: next.move!.from as Key, dest: next.move!.to as Key, brush: 'green' }];
-  setTimeout(() => {
-    if (training !== t) return;
-    show(node);
-    board.setAutoShapes(hint);
-  }, 600);
-}
-
-// ---------------------------------------------------------------------------
 // Chargement et navigation
 // ---------------------------------------------------------------------------
 
@@ -1861,7 +1424,7 @@ function trainingMove(orig: Key, dest: Key) {
  * Charge une partie et ouvre sa vue. `pov` : le joueur à mettre en bas de l'échiquier
  * (le profil par défaut, ou le pseudo recherché à l'import), qu'il ait les Blancs ou les Noirs.
  */
-function load(pgn: string, pov = profileName, view: View = 'partie') {
+export function load(pgn: string, pov = profileName, view: View = 'partie') {
   let g: Game;
   try {
     g = parsePgn(pgn);
@@ -1906,7 +1469,7 @@ function load(pgn: string, pov = profileName, view: View = 'partie') {
   show(root);
 }
 
-const go = {
+export const go = {
   prev: () => current?.parent && show(current.parent),
   next: () => current?.children[0] && show(current.children[0]),
   first: () => root && show(root),
