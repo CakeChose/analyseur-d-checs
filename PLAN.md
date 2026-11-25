@@ -23,6 +23,9 @@ https://cakechose.github.io/analyseur-d-checs/**
   donc absent de git.
 - Exécuté dans un Web Worker ; une seule recherche à la fois, une nouvelle position
   arrête la précédente (`src/engine.ts`). Scores ramenés au point de vue des Blancs.
+- Plusieurs cœurs = plusieurs moteurs (un par cœur, en laissant un cœur à la page ; 8 au plus,
+  2 sur téléphone) : l'analyse d'une partie répartit ses positions entre eux, l'analyse en lot
+  met un moteur par partie.
 - Protocole UCI : `position fen ...`, `go depth N`, lecture de `info ... score cp/mate ... pv ...`.
 - MultiPV 3 : nécessaire pour détecter les coups "Great / seul bon coup" (écart entre 1er et 2e coup).
 
@@ -38,12 +41,15 @@ https://cakechose.github.io/analyseur-d-checs/**
 
 | Fichier | Rôle |
 |---|---|
-| `main.ts` | Interface : affichage, navigation, analyse, exercices, import |
+| `main.ts` | Interface : affichage, navigation, analyse, exercices (lecteur de problèmes), profil, import |
+| `problems.ts` | Page Problèmes : choix des problèmes, suivi des réussites, score |
+| `openings-view.ts` | Page Ouvertures : mes ouvertures, catalogue, entraînement sur une ligne |
+| `ui.ts` | Petits utilitaires d'affichage partagés (`$`, `esc`, `pct`, `groupCount`) |
 | `engine.ts` | Pilote UCI de Stockfish |
-| `analysis.ts` | Évaluation des positions, notes des coups, précision ; seuils dans `THRESHOLDS` |
+| `analysis.ts` | Évaluation des positions (sur plusieurs moteurs), notes des coups, précision ; seuils dans `THRESHOLDS` |
 | `winprob.ts` | Conversion évaluation → probabilité de gain |
 | `tree.ts` | Arbre des coups (partie principale + variantes) |
-| `explain.ts` | Explications couche 1 (faits vérifiés) |
+| `explain.ts` | Explications : faits vérifiés, ce que fait un coup, textes du coach |
 | `profile.ts` | Profil joueur : fiches, étiquettes des erreurs, synthèse, analyse en lot, export / import |
 | `openings.ts` + `data/openings.json` | Base d'ouvertures (coups de livre, nom de l'ouverture) |
 | `import.ts` | Parties chess.com / Lichess |
@@ -61,6 +67,10 @@ https://cakechose.github.io/analyseur-d-checs/**
 ### Analyseur de partie (pipeline) — fait
 - Pour chaque position de la partie : évaluation Stockfish (profondeur réglable 12 / 16 / 20, 16 par défaut ; MultiPV 3).
 - Résultats affichés progressivement pendant l'analyse (barre de progression).
+- Positions réparties entre plusieurs moteurs (un par cœur) : partie de l'Opéra (34 positions,
+  profondeur 16) en 30 s au lieu de 59 s sur un PC portable 22 fils. Pas 8× plus vite : cœurs
+  économes et puissance limitée quand tout tourne, et la position la plus dure reste sur un seul moteur.
+  Des blocs de positions consécutives par moteur n'allaient pas plus vite (33 s).
 - Cache des analyses dans IndexedDB : seules les évaluations sont gardées, les notes sont
   recalculées, donc un changement de seuils s'applique aussi aux parties déjà analysées.
 
@@ -104,9 +114,23 @@ https://cakechose.github.io/analyseur-d-checs/**
   - réfutation : "l'adversaire répond X et gagne un cavalier" (bilan matériel sur la ligne du moteur) ;
   - pièce en prise, mat forcé, fourchette, clouage (devant le roi ou la dame) ;
   - ce que le meilleur coup obtenait (gain de matériel, mat en N, évaluation) ;
-  - sacrifice d'un coup brillant, seul coup, occasion manquée.
+  - sacrifice d'un coup brillant, seul coup, occasion manquée ;
+  - menace ignorée (la suite gagnante adverse marchait déjà avant le coup, vérifiée en rejouant
+    toute la suite du moteur), défenseur retiré, ce que le meilleur coup empêchait.
+- Coach (format inspiré de la Revue de partie de chess.com, avec nos propres phrases) :
+  - carte « ton coup » : verdict, évaluation, une phrase (ton selon la note + raison) ;
+  - carte « meilleur coup » s'il est différent : ce qu'il fait (`describeMove` : mat, menace de mat,
+    promotion, roque, prise, fourchette, clouage, échec, attaque, mise à l'abri, défense,
+    développement, centre, colonne ouverte, pion passé) ;
+  - « Voir la suite » sur chaque carte (la ligne du moteur jouée sur l'échiquier comme une variante) ;
+  - la liste complète des faits repliée sous « Détails ».
+  - Phrases variées mais stables (choix selon la position). Limite : les erreurs purement
+    positionnelles (structure de pions…) restent décrites de façon factuelle.
 - Couche 2 (reformulation par Claude avec une clé API) : retirée. Demander une clé API donnait
   au site un air douteux, et les faits de la couche 1 suffisent.
+- IA locale (WebLLM dans le navigateur, sans API) : prototype sur la branche `ia-locale`
+  (Qwen2.5-1.5B puis 3B). Le 3B écrit un français correct mais reste vague, invente parfois
+  un détail, télécharge ~2 Go et met ~40 s par commentaire sur un PC portable : pas retenu.
 
 ### Interface (UI) — fait
 - Trois colonnes sur grand écran : partie / bilan / import à gauche, échiquier + barre d'éval au centre,
@@ -338,6 +362,9 @@ On construit d'abord le **squelette** (10.1 à 10.4), puis les **pages d'apprent
   d'erreur : il faut trouver le meilleur coup). Score : réussis, ratés, série en cours, meilleure série.
   Chaque problème a un état : jamais essayé (gris), raté (rouge), réussi 1 fois (vert pâle),
   2 fois de suite (vert), 3 fois de suite = validé (vert foncé), plus proposé. Seul le premier essai compte.
+  Seules les positions à **un seul bon coup** deviennent des problèmes (règle du « Seul coup » :
+  le 2e coup du moteur perd > 10 points et ne garde pas ≥ 75 %, ou un mat que le 2e coup ne donne
+  plus) : sinon plusieurs réponses étaient valables et on avait trop souvent faux.
 - Victoires / nulles / défaites en vert / gris / rouge partout où elles apparaissent.
 - D'autres pages pourront suivre le même modèle (finales, gestion du temps…).
 
@@ -346,16 +373,24 @@ On construit d'abord le **squelette** (10.1 à 10.4), puis les **pages d'apprent
 - L'Elo n'est connu que pour les parties récupérées (pas d'historique complet sans plus d'appels).
 - La base d'ouvertures donne des positions nommées, pas des statistiques de popularité :
   « coups de livre » oui, « coup le plus joué au monde » non (il faudrait l'explorateur Lichess).
-- C'est une réorganisation importante de `main.ts` : à découper en pages (accueil, profil, partie,
-  apprentissage) pour rester lisible.
+- C'est une réorganisation importante de `main.ts` : à découper en pages pour rester lisible.
+  Fait pour les pages Problèmes et Ouvertures (`problems.ts`, `openings-view.ts`, qui importent
+  l'état partagé depuis `main.ts`) ; restent dans `main.ts` le profil et la vue d'une partie.
+
 ## Pistes pour la suite
 - Calibrer les seuils (surtout Brillant et Seul coup) sur des parties analysées par chess.com.
 - Choix de la pièce lors d'une promotion (aujourd'hui : dame automatique).
-- Version multithread de Stockfish pour analyser plus vite (nécessite les en-têtes COOP/COEP, non disponibles sur GitHub Pages).
+- Coach : nouveaux motifs à partir des phrases qui sonnent faux sur de vraies parties
+  (structure de pions, pièce piégée, roi exposé, enfilade, attaque à la découverte).
+- Commentaires rédigés par une IA installée sur le PC (Ollama, modèle 7–8B), pré-calculés pendant
+  l'analyse en lot du profil : meilleure qualité que l'IA dans le navigateur, mais pour soi seul.
 - Appli de bureau (Tauri).
 
 ## Risques
 - Les seuils de classification ne correspondront jamais exactement à chess.com (leur modèle est privé) : on vise "cohérent", pas "identique".
 - La détection "Brillant" est la plus subjective : à calibrer sur des exemples (aucun sur la partie de l'Opéra de Morphy, la position y étant déjà gagnante).
-- Vitesse : Stockfish WASM monothread ~1 s par position -> 1 à 2 min pour une partie de 40 coups.
+- Vitesse : Stockfish WASM monothread ~1 à 2 s par position ; avec un moteur par cœur, ~30 s
+  pour une partie de 17 coups à profondeur 16 (PC portable).
+- Projet dans OneDrive : la synchronisation retouche les fichiers et fait recharger le serveur de
+  développement (`npm run dev`) ; sans effet sur le site.
 - Le moteur lite est un peu plus faible que celui de chess.com : de petites différences d'évaluation sont normales.
