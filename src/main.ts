@@ -10,6 +10,7 @@ import {
   analyseGame,
   evaluatePosition,
   LABELS,
+  puzzlePosition,
   THRESHOLDS,
   reviewGame,
   reviewMove,
@@ -676,9 +677,16 @@ function startPuzzles(color: 'w' | 'b') {
   if (!root || !game) return;
   const id = gameId(game);
   const queue = mainline(root)
-    .filter((n) => n.move?.color === color && n.review && BAD.includes(n.review.classification) && n.parent?.eval?.lines[0])
+    .filter(
+      (n) =>
+        n.move?.color === color &&
+        n.review &&
+        BAD.includes(n.review.classification) &&
+        n.parent?.eval &&
+        puzzlePosition(n.parent.eval, color === 'w'),
+    )
     .map((n) => ({ id, ply: n.ply }));
-  if (!startPuzzleQueue(queue)) $('report-msg').textContent = 'Aucune erreur à retravailler pour ce camp.';
+  if (!startPuzzleQueue(queue)) $('report-msg').textContent = 'Aucune erreur à retravailler pour ce camp (seules celles où il n\'y avait qu\'un bon coup comptent).';
 }
 
 /** Les coups acceptés : le meilleur, et ceux presque aussi bons selon le moteur. */
@@ -1278,6 +1286,11 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[], l
     const what = m.san ? `coup ${Math.ceil(m.ply / 2)} : ${esc(m.san)}` : `position gagnante au coup ${Math.ceil(m.ply / 2)}`;
     return `<li><button class="link" data-ex="${profileExamples.length - 1}">contre ${esc(m.opponent)} · ${what}</button></li>`;
   };
+  // Problèmes : seulement les erreurs commises là où il n'y avait qu'un bon coup.
+  const trainButton = (c: ProfileStats['causes'][number], i: number, cls = '') => {
+    const k = c.examples.filter((m) => m.onlyMove).length;
+    return k ? `<button class="${cls}" data-train="${i}">S'entraîner (${k})</button>` : '';
+  };
   // « Erreur de position » est la catégorie fourre-tout : on préfère une cause précise.
   const top = s.causes.find((c) => c.tag !== 'gache' && c.tag !== 'position') ?? s.causes.find((c) => c.tag !== 'gache');
   const PHASE_IN: Record<string, string> = { ouverture: 'ouverture', milieu: 'milieu de partie', finale: 'finale' };
@@ -1287,13 +1300,13 @@ function renderProfile(s: ProfileStats, counts: (readonly [string, number])[], l
     weak = `<section class="card weak">
       <div class="weak-k">Ton point faible n°1</div><div class="weak-t">${TAGS[top.tag]}</div>
       <div class="muted">${pct((100 * top.count) / s.totalMistakes)} de tes erreurs · surtout en ${PHASE_IN[phases[0][0]]}</div>
-      <button class="primary" data-train="${s.causes.indexOf(top)}">S'entraîner (${top.count})</button></section>`;
+      ${trainButton(top, s.causes.indexOf(top), 'primary')}</section>`;
   }
   const causes = s.causes
     .map((c, i) => {
       const label = c.tag === 'gache' ? 'Avantage gâché' : TAGS[c.tag];
       const share = c.tag === 'gache' ? `${pct((100 * c.count) / n)} des parties` : pct((100 * c.count) / s.totalMistakes);
-      const train = c.tag === 'gache' ? '' : `<button data-train="${i}">S'entraîner (${c.count})</button>`;
+      const train = c.tag === 'gache' ? '' : trainButton(c, i);
       return `<details class="cause-card"><summary><span>${label}</span><span class="muted">${share}</span></summary>
         ${train}<ul class="examples">${c.examples.slice(-8).reverse().map(example).join('')}</ul></details>`;
     })

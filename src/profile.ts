@@ -5,6 +5,7 @@
 import { Chess, type Color, type Move } from 'chess.js';
 import {
   analyseGame,
+  puzzlePosition,
   reviewGame,
   type Classification,
   type GameAnalysis,
@@ -158,6 +159,8 @@ export interface MistakeRecord {
   loss: number;
   phase: Phase;
   tags: Tag[];
+  /** Il n'y avait qu'un seul bon coup : la position peut servir de problème. */
+  onlyMove: boolean;
 }
 
 export interface GameSummary {
@@ -252,6 +255,7 @@ export function summarize(fiche: Fiche, username: string): GameSummary | null {
         loss: review.loss,
         phase,
         tags,
+        onlyMove: puzzlePosition(before, color === 'w'),
       });
     } else if (tacticAvailable && GOOD.includes(review.classification)) {
       summary.tacticsFound++;
@@ -318,6 +322,7 @@ export function profileStats(games: GameSummary[], minLoss = 0): ProfileStats {
         loss: 0,
         phase: 'milieu' as Phase,
         tags: [],
+        onlyMove: false,
       })),
     });
   }

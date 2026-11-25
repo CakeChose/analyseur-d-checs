@@ -2,7 +2,7 @@
 // Page Problèmes : exercices tirés de tes erreurs, par type ou au hasard, avec suivi de réussite
 // ---------------------------------------------------------------------------
 
-import { TAGS } from './profile';
+import { TAGS, type MistakeRecord } from './profile';
 import { $, groupCount } from './ui';
 // shortcut: import circulaire avec main.ts (état partagé : profil, exercice en cours) ; sans danger tant
 // que ce fichier n'utilise ces noms que dans des fonctions. Passer par un module d'état si ça grossit.
@@ -79,6 +79,9 @@ function exoStatus(stats: ExoStats, m: { id: string; ply: number }): ExoStatus {
   return run >= 3 ? 'done' : run === 2 ? 'run2' : run === 1 ? 'run1' : 'failed';
 }
 
+/** Seules les erreurs commises là où il n'y avait qu'un bon coup deviennent des problèmes. */
+const puzzlesOf = (xs: MistakeRecord[]) => xs.filter((m) => m.onlyMove);
+
 /** Cause travaillée (index dans profileCauses), ou -2 pour les problèmes aléatoires. */
 let problemCause = -1;
 
@@ -97,7 +100,7 @@ export function openProblems(i: number) {
   problemCause = i;
   const stats = exoStats();
   const rank: Record<ExoStatus, number> = { new: 0, failed: 0, run1: 1, run2: 2, done: 3 };
-  const queue = [...c.examples]
+  const queue = puzzlesOf(c.examples)
     .reverse()
     .filter((m) => exoStatus(stats, m) !== 'done')
     .sort((a, b) => rank[exoStatus(stats, a)] - rank[exoStatus(stats, b)])
@@ -111,7 +114,7 @@ export function openRandomProblems() {
   problemCause = -2;
   const stats = exoStats();
   const seen = new Set<string>();
-  const pool = profileMistakes.filter((m) => {
+  const pool = puzzlesOf(profileMistakes).filter((m) => {
     const k = `${m.id}#${m.ply}`;
     if (m.classification === 'inaccuracy' || seen.has(k) || exoStatus(stats, m) === 'done') return false;
     seen.add(k);
@@ -136,18 +139,19 @@ function statusBar(items: { id: string; ply: number }[], stats: ExoStats): strin
 export function renderProblems() {
   const stats = exoStats();
   const sc = exoScore();
-  const randomPool = profileMistakes.filter((m) => m.classification !== 'inaccuracy');
+  const randomPool = puzzlesOf(profileMistakes).filter((m) => m.classification !== 'inaccuracy');
   const keys = new Set(randomPool.map((m) => `${m.id}#${m.ply}`));
   const unique = [...keys].map((k) => ({ id: k.slice(0, k.lastIndexOf('#')), ply: Number(k.slice(k.lastIndexOf('#') + 1)) }));
   const counts = groupCount(unique.map((m) => exoStatus(stats, m)));
   const left = unique.length - (counts.get('done') ?? 0);
   const rows = profileCauses
     .map((c, i) => {
-      if (c.tag === 'gache') return '';
-      const done = c.examples.filter((m) => exoStatus(stats, m) === 'done').length;
+      const items = puzzlesOf(c.examples);
+      if (c.tag === 'gache' || !items.length) return '';
+      const done = items.filter((m) => exoStatus(stats, m) === 'done').length;
       return `<button class="op-row prob-row ${i === problemCause ? 'current' : ''}" data-ptag="${i}">
-        <span class="op-name">${TAGS[c.tag]}</span>${statusBar(c.examples, stats)}
-        <span class="muted" title="Problèmes validés">${done}/${c.count}</span></button>`;
+        <span class="op-name">${TAGS[c.tag]}</span>${statusBar(items, stats)}
+        <span class="muted" title="Problèmes validés">${done}/${items.length}</span></button>`;
     })
     .join('');
   $('side-problems').innerHTML = `<h2>Problèmes</h2>

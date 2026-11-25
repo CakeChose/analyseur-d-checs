@@ -180,6 +180,30 @@ function isSacrifice(move: Move, after: PositionEval): boolean {
   return start - worst >= THRESHOLDS.brilliantSacrifice;
 }
 
+/**
+ * Un seul bon coup dans la position (pour le camp `white` ou non) : le 2e coup du moteur perd
+ * nettement plus que le 1er et ne garde pas une position gagnante. Sert au « Seul coup » et aux problèmes.
+ */
+export function onlyGoodMove(before: PositionEval, white: boolean): boolean {
+  const [best, second] = before.lines;
+  if (!best || !second) return false;
+  const pov = (w: number) => (white ? w : 100 - w);
+  return (
+    pov(winPercent(best)) - pov(winPercent(second)) > THRESHOLDS.great &&
+    pov(winPercent(second)) <= THRESHOLDS.greatAlternativeMax
+  );
+}
+
+/**
+ * Position qui peut servir de problème : un seul bon coup, ou un mat que le 2e coup du moteur
+ * ne donne plus (même si ce 2e coup reste gagnant, il n'y a qu'une réponse à trouver).
+ */
+export function puzzlePosition(before: PositionEval, white: boolean): boolean {
+  const [best, second] = before.lines;
+  const mates = (l: EngineLine) => l.mate !== undefined && (white ? l.mate > 0 : l.mate < 0);
+  return onlyGoodMove(before, white) || (!!second && mates(best) && !mates(second));
+}
+
 export function reviewMove(
   move: Move,
   before: PositionEval,
@@ -206,15 +230,9 @@ export function reviewMove(
   else classification = 'blunder';
 
   if (loss < T.excellent) {
-    const second = before.lines[1];
     if (isSacrifice(move, after) && winBefore < T.alreadyWinning && winAfter >= 50) {
       classification = 'brilliant';
-    } else if (
-      isBest &&
-      second &&
-      pov(winPercent(best)) - pov(winPercent(second)) > T.great &&
-      pov(winPercent(second)) <= T.greatAlternativeMax
-    ) {
+    } else if (isBest && onlyGoodMove(before, white)) {
       classification = 'great';
     }
   }
