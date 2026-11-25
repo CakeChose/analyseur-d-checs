@@ -32,6 +32,7 @@ import {
   TAGS,
   toFiche,
   type Fiche,
+  type GameSummary,
   type MistakeRecord,
   type ProfileStats,
 } from './profile';
@@ -1101,17 +1102,12 @@ async function refreshProfile() {
   const summaries = await loadProfile(user);
   accById = new Map(summaries.map((s) => [s.id, s.accuracy]));
   renderGamesList();
-  // Une synthèse par cadence (un onglet chacune) : on ne mélange pas bullet et rapide.
-  if (!profileSpeed) {
-    const total = (sp: string) => {
-      const st = chessStats?.speeds[sp];
-      return st ? st.win + st.draw + st.loss : listGames.filter((g) => g.speed === sp).length;
-    };
-    profileSpeed = [...SPEED_ORDER].sort((a, b) => total(b) - total(a))[0];
-  }
+  // Onglet « Général » (toutes cadences) puis une synthèse par cadence : on ne mélange pas bullet et rapide.
+  const all = profileSpeed === 'all';
   renderProfile(
-    profileStats(summaries.filter((g) => g.speed === profileSpeed), profileMinLoss),
-    listGames.filter((g) => g.speed === profileSpeed),
+    profileStats(all ? summaries : summaries.filter((g) => g.speed === profileSpeed), profileMinLoss),
+    all ? listGames : listGames.filter((g) => g.speed === profileSpeed),
+    summaries,
   );
 }
 
@@ -1235,24 +1231,76 @@ function endingsCard(list: OnlineGame[]): string {
     <table class="stats">${line('win', 'Victoires')}${line('loss', 'Défaites')}${line('draw', 'Nulles')}</table></section>`;
 }
 
-/** Cadence affichée, sur tout l'historique du compte chess.com (pas seulement les dernières parties). */
-function historyCard(): string {
+/** Elo des parties de `list` (de la plus ancienne à la plus récente), avec leurs dates. */
+function eloSeries(list: OnlineGame[]) {
+  const u = profileName.toLowerCase();
+  const games = [...list].reverse().filter((g) => (g.white.toLowerCase() === u ? g.whiteElo : g.blackElo));
+  return { games, elos: games.map((g) => (g.white.toLowerCase() === u ? g.whiteElo : g.blackElo)!) };
+}
+
+/** « ↑ 35 » en vert ou « ↓ 12 » en rouge : progression de l'Elo sur les dernières parties. */
+function eloTrend(elos: number[]): string {
+  if (elos.length < 2) return '';
+  const d = elos.at(-1)! - elos[0];
+  return `<span class="trend ${d > 0 ? 't-win' : d < 0 ? 't-loss' : 'muted'}" title="Sur les ${elos.length} dernières parties">${d > 0 ? '↑' : d < 0 ? '↓' : '='} ${Math.abs(d)}</span>`;
+}
+
+/** En-tête d'une cadence : Elo actuel et sa courbe, puis le bilan de tout l'historique chess.com. */
+function heroCard(list: OnlineGame[]): string {
+  const { games, elos } = eloSeries(list);
   const s = chessStats?.speeds[profileSpeed];
-  if (!s) return '';
-  const n = s.win + s.loss + s.draw;
-  const bestElo = s.bestGame ? `<a class="link" href="${esc(s.bestGame)}" target="_blank" rel="noopener" title="Voir la partie sur chess.com">${s.best}</a>` : String(s.best);
-  const best = s.best ? `${bestElo}${s.bestDate ? ` <span class="muted">${new Date(s.bestDate).toLocaleDateString('fr-FR')}</span>` : ''}` : '—';
-  // Par jour : chess.com donne le temps moyen par coup (en secondes).
-  const perMove = (sec: number) => (sec >= 3600 ? `${(sec / 3600).toFixed(1).replace('.', ',')} h` : `${Math.round(sec / 60)} min`);
-  return `<section class="card"><h2>Tout ton historique en ${SPEEDS[profileSpeed].toLowerCase()}</h2>
-    <div class="facts-grid">
-      ${fact('Meilleur Elo', best)}
-      ${fact('Parties jouées', n.toLocaleString('fr-FR'))}
-      ${fact('V / N / D', vnd(s.win, s.draw, s.loss, ' / ', true))}
-      ${fact('Score', n ? pct((100 * (s.win + s.draw / 2)) / n) : '—')}
-      ${s.timePerMove ? fact('Temps moyen par coup', perMove(s.timePerMove)) : ''}
-      ${s.timeoutPercent !== undefined && profileSpeed === 'daily' ? fact('Parties perdues au temps', pct(s.timeoutPercent)) : ''}
-    </div></section>`;
+  const elo = s?.rating ?? elos.at(-1);
+  let facts = '';
+  if (s) {
+    const n = s.win + s.loss + s.draw;
+    const share = (k: number) => (n ? ` <span class="muted">${pct((100 * k) / n)}</span>` : '');
+    const bestElo = s.bestGame ? `<a class="link" href="${esc(s.bestGame)}" target="_blank" rel="noopener" title="Voir la partie sur chess.com">${s.best}</a>` : String(s.best);
+    const best = s.best ? `${bestElo}${s.bestDate ? ` <span class="muted hero-date">${new Date(s.bestDate).toLocaleDateString('fr-FR')}</span>` : ''}` : '—';
+    // Par jour : chess.com donne le temps moyen par coup (en secondes).
+    const perMove = (sec: number) => (sec >= 3600 ? `${(sec / 3600).toFixed(1).replace('.', ',')} h` : `${Math.round(sec / 60)} min`);
+    const big = (label: string, value: string, cls = '') => `<div class="hero-stat"><div class="muted">${label}</div><div class="hero-v ${cls}">${value}</div></div>`;
+    facts = `<div class="hero-stats">
+        ${big('Meilleur Elo', best)}
+        ${big('Parties', n.toLocaleString('fr-FR'))}
+        ${big(`Victoires${share(s.win)}`, s.win.toLocaleString('fr-FR'), 't-win')}
+        ${big(`Nulles${share(s.draw)}`, s.draw.toLocaleString('fr-FR'), 't-draw')}
+        ${big(`Défaites${share(s.loss)}`, s.loss.toLocaleString('fr-FR'), 't-loss')}
+        ${s.timePerMove ? big('Temps moyen par coup', perMove(s.timePerMove)) : ''}
+        ${s.timeoutPercent !== undefined && profileSpeed === 'daily' ? big('Perdues au temps', pct(s.timeoutPercent)) : ''}
+      </div>
+      <p class="muted hero-note">Bilan sur tout ton historique chess.com ; la courbe montre tes ${elos.length} dernières parties.</p>`;
+  }
+  return `<section class="card hero">
+    <div class="hero-head"><h2>${SPEEDS[profileSpeed]}</h2><span class="spacer"></span><span class="hero-elo">${elo ?? '—'}</span>${eloTrend(elos)}</div>
+    ${sparkline(elos, games.map((g) => shortDate(g.date)), 'elo', (v) => String(Math.round(v)), 'Elo')}
+    ${facts}</section>`;
+}
+
+/** Onglet « Général » : une ligne par cadence, cliquable pour ouvrir son onglet. */
+function overviewCard(summaries: GameSummary[]): string {
+  const rows = SPEED_ORDER.filter((sp) => chessStats?.speeds[sp] || listGames.some((g) => g.speed === sp)).map((sp) => {
+    const s = chessStats?.speeds[sp];
+    const { elos } = eloSeries(listGames.filter((g) => g.speed === sp));
+    const n = s ? s.win + s.loss + s.draw : 0;
+    const mine = summaries.filter((g) => g.speed === sp);
+    const acc = mine.length ? (mine.reduce((a, g) => a + g.accuracy, 0) / mine.length).toFixed(1) : '—';
+    const brilliants = mine.reduce((a, g) => a + (g.counts.brilliant ?? 0), 0);
+    return `<tr class="ov-row" data-speed="${sp}" tabindex="0" title="Voir les statistiques en ${SPEEDS[sp].toLowerCase()}">
+      <td><b>${SPEEDS[sp]}</b></td>
+      <td><b>${s?.rating ?? elos.at(-1) ?? '—'}</b> ${eloTrend(elos)}</td>
+      <td>${s?.best ?? '—'}</td>
+      <td>${n ? n.toLocaleString('fr-FR') : '—'}</td>
+      <td>${n ? pct((100 * (s!.win + s!.draw / 2)) / n) : '—'}</td>
+      <td>${acc}</td>
+      <td>${mine.length ? `<span class="c-brilliant mc-sym">!!</span> ${brilliants}` : '—'}</td>
+      <td class="ov-go">›</td></tr>`;
+  });
+  if (!rows.length) return '';
+  return `<section class="card"><h2>Tes cadences</h2>
+    <div class="table-scroll"><table class="stats overview"><tr><th>Cadence</th><th>Elo</th><th>Meilleur</th><th>Parties</th><th>Score</th>
+      <th title="Moyenne sur tes parties analysées">Précision</th><th title="Coups brillants dans tes parties analysées">Brillants</th><th></th></tr>
+      ${rows.join('')}</table></div>
+    <p class="muted">Elo, meilleur Elo, parties et score : tout ton historique chess.com. Précision et brillants : tes parties analysées. Clique sur une cadence pour le détail.</p></section>`;
 }
 
 /** Classification des coups dans les parties analysées de la cadence (brillants, gaffes…), plus la précision chess.com. */
@@ -1274,7 +1322,7 @@ function movesCard(s: ProfileStats, list: OnlineGame[]): string {
       <span class="muted">${LABELS[c].name}${moves ? ` · ${pct((100 * k) / moves)}` : ''}</span></div>`;
   }).join('');
   return `<section class="card"><h2>Tes coups</h2>
-    <p class="muted">Sur ${n > 1 ? `tes ${n} parties analysées` : 'ta partie analysée'} en ${SPEEDS[profileSpeed].toLowerCase()} (${moves.toLocaleString('fr-FR')} coups).</p>
+    <p class="muted">Sur ${n > 1 ? `tes ${n} parties analysées` : 'ta partie analysée'} ${profileSpeed === 'all' ? 'toutes cadences confondues' : `en ${SPEEDS[profileSpeed].toLowerCase()}`} (${moves.toLocaleString('fr-FR')} coups).</p>
     <div class="move-counts">${cells}</div>
     ${ccFact ? `<div class="facts-grid">${ccFact}</div>` : ''}</section>`;
 }
@@ -1288,9 +1336,9 @@ const LOSS_FILTERS: [number, string][] = [
 ];
 
 const SPEED_ORDER = ['rapid', 'blitz', 'bullet', 'daily'];
-const SPEEDS: Record<string, string> = { bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapide', daily: 'Par jour' };
-/** Cadence affichée dans la synthèse du profil. */
-let profileSpeed = '';
+const SPEEDS: Record<string, string> = { all: 'Général', bullet: 'Bullet', blitz: 'Blitz', rapid: 'Rapide', daily: 'Par jour' };
+/** Onglet affiché dans la synthèse du profil : 'all' (Général) ou une cadence. */
+let profileSpeed = 'all';
 
 /**
  * Courbe avec ses axes : en ordonnée, les valeurs (max, milieu, min) ; en abscisse, la date
@@ -1320,48 +1368,39 @@ function sparkline(values: number[], dates: string[], cls: string, fmt: (v: numb
 const shortDate = (d: Date | string) =>
   typeof d === 'string' ? `${d.slice(8, 10)}/${d.slice(5, 7)}` : d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' });
 
-function renderProfile(s: ProfileStats, list: OnlineGame[]) {
+function renderProfile(s: ProfileStats, list: OnlineGame[], summaries: GameSummary[]) {
   const n = s.games.length;
-  const u = profileName.toLowerCase();
-  const speedButtons = `<div class="speed-bar" role="tablist">${SPEED_ORDER.map((sp) => {
+  const speedButtons = `<div class="speed-bar" role="tablist">${['all', ...SPEED_ORDER].map((sp) => {
     const elo = chessStats?.speeds[sp]?.rating;
     return `<button role="tab" aria-selected="${sp === profileSpeed}" data-speed="${sp}" class="${sp === profileSpeed ? 'active' : ''}">${SPEEDS[sp]}${elo ? ` <span class="tab-elo">${elo}</span>` : ''}</button>`;
   }).join('')}</div>`;
 
   // Milieu : les statistiques à lire.
-  const chrono = [...list].reverse();
-  const eloGames = chrono.filter((g) => (g.white.toLowerCase() === u ? g.whiteElo : g.blackElo));
-  const elos = eloGames.map((g) => (g.white.toLowerCase() === u ? g.whiteElo : g.blackElo)!);
   const rec = { win: 0, draw: 0, loss: 0 };
   for (const g of list) rec[resultFor(g)]++;
   const kpi = (label: string, value: string, sub = '') =>
     `<div class="kpi"><div class="muted">${label}</div><div class="kpi-v">${value}</div>${sub ? `<div class="muted kpi-s">${sub}</div>` : ''}</div>`;
   const byColor = (c: 'w' | 'b') => (s.games.some((g) => g.color === c) ? s.accuracy[c].toFixed(1) : '—');
   const blunders = s.games.flatMap((g) => g.mistakes).filter((m) => m.classification === 'blunder').length;
-  const eloDiff = elos.length >= 2 ? elos.at(-1)! - elos[0] : 0;
   const accGames = [...s.games].sort((a, b) => a.date.localeCompare(b.date));
   const accs = accGames.map((g) => g.accuracy);
   const row = (cells: (string | number)[]) => `<tr>${cells.map((c) => `<td>${c}</td>`).join('')}</tr>`;
+  const all = profileSpeed === 'all';
+  const kpis = `<div class="kpis">
+      ${kpi('Précision', n ? s.accuracy.all.toFixed(1) : '—', n ? `Blancs ${byColor('w')} · Noirs ${byColor('b')}` : 'aucune partie analysée')}
+      ${kpi('Bilan récent', list.length ? pct((100 * (rec.win + rec.draw / 2)) / list.length) : '—', `${vnd(rec.win, rec.draw, rec.loss)} sur ${list.length} parties`)}
+      ${kpi('Gaffes par partie', n ? (blunders / n).toFixed(1) : '—', `${n} partie${n > 1 ? 's' : ''} analysée${n > 1 ? 's' : ''} sur ${list.length}`)}
+    </div>`;
+  const accCard = `<section class="card"><h2>Précision par partie</h2>${
+    n
+      ? sparkline(accs, accGames.map((g) => shortDate(g.date)), 'acc-line', (v) => v.toFixed(1), 'Précision (%)')
+      : '<p class="muted">Analyse tes parties pour voir ta précision.</p>'
+  }</section>`;
   $('profile-main').innerHTML = `
     ${speedButtons}
-    <div class="kpis">
-      ${kpi('Précision', n ? s.accuracy.all.toFixed(1) : '—', n ? `Blancs ${byColor('w')} · Noirs ${byColor('b')}` : 'aucune partie analysée')}
-      ${kpi('Elo', elos.length ? String(elos.at(-1)) : '—', elos.length >= 2 ? `${eloDiff >= 0 ? '+' : ''}${eloDiff} sur ${elos.length} parties` : '')}
-      ${kpi('Bilan', list.length ? pct((100 * (rec.win + rec.draw / 2)) / list.length) : '—', vnd(rec.win, rec.draw, rec.loss))}
-      ${kpi('Gaffes par partie', n ? (blunders / n).toFixed(1) : '—', `${n} partie${n > 1 ? 's' : ''} analysée${n > 1 ? 's' : ''} sur ${list.length}`)}
-    </div>
-    <div class="chart-row">
-    <section class="card"><h2>Elo — ${SPEEDS[profileSpeed]}</h2>${sparkline(elos, eloGames.map((g) => shortDate(g.date)), 'elo', (v) => String(Math.round(v)), 'Elo')}</section>
-    <section class="card"><h2>Précision par partie</h2>${
-      n
-        ? sparkline(accs, accGames.map((g) => shortDate(g.date)), 'acc-line', (v) => v.toFixed(1), 'Précision (%)')
-        : '<p class="muted">Analyse tes parties pour voir ta précision.</p>'
-    }</section>
-    </div>
-    ${historyCard()}
+    ${all ? overviewCard(summaries) : `${heroCard(list)}${kpis}<div class="chart-row">${accCard}</div>`}
     ${movesCard(s, list)}
-    ${opponentCard(list)}
-    ${endingsCard(list)}
+    ${all ? '' : opponentCard(list) + endingsCard(list)}
     <section class="card">
       <h2>Ouvertures les plus jouées</h2>
       ${
@@ -1428,6 +1467,10 @@ $('view-profil').addEventListener('change', (e) => {
   if (t.id !== 'profile-minloss') return;
   profileMinLoss = Number(t.value);
   refreshProfile();
+});
+$('view-profil').addEventListener('keydown', (e) => {
+  const row = (e.target as HTMLElement).closest<HTMLElement>('.ov-row');
+  if (row && e.key === 'Enter') row.click();
 });
 $('view-profil').addEventListener('click', async (e) => {
   const t = e.target as HTMLElement;
