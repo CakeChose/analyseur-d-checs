@@ -106,15 +106,33 @@ function legalDests(fen: string): Map<Key, Key[]> {
   return dests;
 }
 
+/**
+ * Pion qui arrive sur la dernière rangée : demande la pièce (q, r, b, n).
+ * '' si le coup n'est pas une promotion, null si le joueur ferme la fenêtre.
+ */
+export function choosePromotion(fen: string, orig: Key, dest: Key): Promise<string | null> {
+  const piece = new Chess(fen).get(orig as Square);
+  if (piece?.type !== 'p' || (dest[1] !== '8' && dest[1] !== '1')) return Promise.resolve('');
+  const dialog = $<HTMLDialogElement>('promo-dialog');
+  const color = piece.color === 'w' ? 'white' : 'black';
+  dialog.querySelectorAll<HTMLElement>('piece').forEach((p) => (p.className = `${p.dataset.role} ${color}`));
+  dialog.returnValue = '';
+  dialog.showModal();
+  return new Promise((resolve) =>
+    dialog.addEventListener('close', () => resolve(dialog.returnValue || null), { once: true }),
+  );
+}
+
 /** L'utilisateur joue un coup sur l'échiquier : on l'ajoute à l'arbre (variante). */
-function onUserMove(orig: Key, dest: Key) {
+async function onUserMove(orig: Key, dest: Key) {
   if (!current) return;
   if (training) return trainingMove(orig, dest);
   if (puzzle && !puzzleFree()) return puzzleMove(orig, dest);
-  const piece = new Chess(current.fen).get(orig as Square);
-  const promoting = piece?.type === 'p' && (dest[1] === '8' || dest[1] === '1');
-  const node = playMove(current, orig, dest, promoting ? 'q' : undefined);
-  if (!node) return show(current);
+  const from = current;
+  const promo = await choosePromotion(from.fen, orig, dest);
+  if (promo === null || current !== from) return show(current);
+  const node = playMove(from, orig, dest, promo || undefined);
+  if (!node) return show(from);
   renderMoves();
   show(node);
 }
@@ -798,13 +816,13 @@ function recordPuzzle(ok: boolean) {
   puzzle.recorded = true;
 }
 
-function puzzleMove(orig: Key, dest: Key) {
+async function puzzleMove(orig: Key, dest: Key) {
   if (!puzzle || !current) return;
   const p = puzzle;
   const node = current;
+  const promo = await choosePromotion(node.fen, orig, dest);
+  if (promo === null || puzzle !== p || current !== node) return show(current!);
   const chess = new Chess(node.fen);
-  const piece = chess.get(orig as Square);
-  const promo = piece?.type === 'p' && (dest[1] === '8' || dest[1] === '1') ? 'q' : '';
   let san: string;
   try {
     san = chess.move({ from: orig, to: dest, promotion: promo || undefined }).san;
@@ -1781,6 +1799,7 @@ $('online-user').addEventListener('keydown', (e) => e.key === 'Enter' && searchO
 
 document.addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLInputElement) return;
+  if (document.querySelector('dialog[open]')) return;
   const actions: Record<string, () => void> = {
     ArrowLeft: go.prev,
     ArrowRight: go.next,

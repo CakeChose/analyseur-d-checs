@@ -13,7 +13,7 @@ import {
   type PositionEval,
 } from './analysis';
 import { Engine } from './engine';
-import { forkTargets, mateFor, netCaptures, pinByMove, playLine } from './explain';
+import { discoveredAttack, forkTargets, mateFor, netCaptures, pinByMove, playLine, skewerByMove } from './explain';
 import { gameId, parsePgn, type Game } from './game';
 import { fetchChessCom } from './import';
 import { cacheAll, cacheGet, cachePut } from './cache';
@@ -67,9 +67,13 @@ export const TAGS = {
   'subie-mat': 'Mat adverse non vu',
   'subie-fourchette': 'Fourchette adverse non vue',
   'subie-clouage': 'Clouage adverse non vu',
+  'subie-enfilade': 'Enfilade adverse non vue',
+  'subie-decouverte': 'Attaque à la découverte adverse non vue',
   'manquee-mat': 'Mat manqué',
   'manquee-fourchette': 'Fourchette manquée',
   'manquee-clouage': 'Clouage manqué',
+  'manquee-enfilade': 'Enfilade manquée',
+  'manquee-decouverte': 'Attaque à la découverte manquée',
   'manquee-materiel': 'Gain de matériel manqué',
   occasion: "Occasion manquée (l'adversaire venait de se tromper)",
   temps: 'Erreur en manque de temps',
@@ -94,11 +98,15 @@ function phaseOf(fen: string, ply: number): Phase {
   return ply <= 24 ? 'ouverture' : 'milieu';
 }
 
-/** Motif tactique créé par un coup : fourchette, clouage, ou rien. */
-function motif(move: Move): 'fourchette' | 'clouage' | null {
+type Motif = 'fourchette' | 'clouage' | 'enfilade' | 'decouverte';
+
+/** Motif tactique créé par un coup, ou rien. */
+function motif(move: Move): Motif | null {
   const chess = new Chess(move.after);
   if (forkTargets(chess, move).length) return 'fourchette';
   if (pinByMove(chess, move)) return 'clouage';
+  if (skewerByMove(chess, move)) return 'enfilade';
+  if (discoveredAttack(move)) return 'decouverte';
   return null;
 }
 
@@ -119,8 +127,7 @@ function tagsFor(move: Move, before: PositionEval, after: PositionEval, review: 
     const replyMove = playLine(move.after, reply.pv, 1)[0];
     const m = replyMove && motif(replyMove);
     if (mateFor(reply, them)) tags.push('subie-mat');
-    else if (m === 'fourchette') tags.push('subie-fourchette');
-    else if (m === 'clouage') tags.push('subie-clouage');
+    else if (m) tags.push(`subie-${m}`);
     else if (winsMaterial(move.after, reply.pv.slice(0, 3), them, [move])) tags.push('en-prise');
   }
 
@@ -131,7 +138,7 @@ function tagsFor(move: Move, before: PositionEval, after: PositionEval, review: 
     if (mateFor(best, me)) tags.push('manquee-mat');
     else if (winsMaterial(move.before, best.pv, me)) {
       const m = bestMove && motif(bestMove);
-      tags.push(m === 'fourchette' ? 'manquee-fourchette' : m === 'clouage' ? 'manquee-clouage' : 'manquee-materiel');
+      tags.push(m ? `manquee-${m}` : 'manquee-materiel');
     }
   }
 

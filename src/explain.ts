@@ -139,25 +139,30 @@ const DIRS: Record<'b' | 'r', [number, number][]> = {
   ],
 };
 
-/** Clouage créé par la pièce qui vient de jouer : pièce clouée et pièce derrière. */
-export function pinByMove(chess: Chess, move: Move): { pinned: Square; type: PieceSymbol; behind: PieceSymbol } | null {
-  const type = move.piece;
+type Seen = { sq: Square; type: PieceSymbol; color: Color };
+
+/** Pour chaque ligne de la pièce (fou, tour, dame) posée en `from` : les deux premières pièces rencontrées. */
+function lineHits(chess: Chess, from: Square, type: PieceSymbol): [Seen, Seen][] {
   const dirs = type === 'b' ? DIRS.b : type === 'r' ? DIRS.r : type === 'q' ? [...DIRS.b, ...DIRS.r] : [];
-  const file = move.to.charCodeAt(0) - 97;
-  const rank = Number(move.to[1]) - 1;
+  const file = from.charCodeAt(0) - 97;
+  const rank = Number(from[1]) - 1;
+  const out: [Seen, Seen][] = [];
   for (const [df, dr] of dirs) {
-    const seen: { sq: Square; type: PieceSymbol; color: Color }[] = [];
-    for (let f = file + df, r = rank + dr; f >= 0 && f < 8 && r >= 0 && r < 8; f += df, r += dr) {
+    const seen: Seen[] = [];
+    for (let f = file + df, r = rank + dr; f >= 0 && f < 8 && r >= 0 && r < 8 && seen.length < 2; f += df, r += dr) {
       const sq = (String.fromCharCode(97 + f) + (r + 1)) as Square;
       const p = chess.get(sq);
-      if (!p) continue;
-      seen.push({ sq, type: p.type, color: p.color });
-      if (seen.length === 2) break;
+      if (p) seen.push({ sq, type: p.type, color: p.color });
     }
-    const [first, second] = seen;
+    if (seen.length === 2) out.push(seen as [Seen, Seen]);
+  }
+  return out;
+}
+
+/** Clouage créé par la pièce qui vient de jouer : pièce clouée et pièce derrière. */
+export function pinByMove(chess: Chess, move: Move): { pinned: Square; type: PieceSymbol; behind: PieceSymbol } | null {
+  for (const [first, second] of lineHits(chess, move.to, move.piece)) {
     if (
-      first &&
-      second &&
       first.color !== move.color &&
       second.color !== move.color &&
       first.type !== 'k' &&
@@ -169,6 +174,47 @@ export function pinByMove(chess: Chess, move: Move): { pinned: Square; type: Pie
     }
   }
   return null;
+}
+
+/**
+ * Enfilade créée par la pièce qui vient de jouer : elle attaque une pièce forte (roi, dame, tour)
+ * qui doit s'écarter et laisser prendre la pièce derrière elle.
+ */
+export function skewerByMove(chess: Chess, move: Move): { front: PieceSymbol; behind: PieceSymbol; behindSq: Square } | null {
+  const them: Color = move.color === 'w' ? 'b' : 'w';
+  for (const [first, second] of lineHits(chess, move.to, move.piece)) {
+    if (first.color !== them || second.color !== them || second.type === 'p' || second.type === 'k') continue;
+    if (VALUES[first.type] <= VALUES[second.type]) continue;
+    // La pièce de devant doit vraiment fuir : roi, pièce plus forte que l'attaquant, ou pièce non défendue.
+    const mustMove = first.type === 'k' || VALUES[first.type] > VALUES[move.piece] || !chess.attackers(first.sq, them).length;
+    // Et la pièce derrière doit valoir la peine : non défendue, ou plus forte que l'attaquant.
+    const worth = !chess.attackers(second.sq, them).length || VALUES[second.type] > VALUES[move.piece];
+    if (mustMove && worth) return { front: first.type, behind: second.type, behindSq: second.sq };
+  }
+  return null;
+}
+
+/**
+ * Attaque à la découverte : en partant, la pièce jouée libère la ligne d'un fou, d'une tour ou
+ * d'une dame du même camp, qui attaque alors le roi (échec à la découverte) ou une pièce de valeur.
+ */
+export function discoveredAttack(move: Move): { piece: PieceSymbol; target: PieceSymbol; targetSq: Square } | null {
+  if (move.flags.includes('k') || move.flags.includes('q')) return null;
+  const before = new Chess(move.before);
+  const after = new Chess(move.after);
+  const me = move.color;
+  const them: Color = me === 'w' ? 'b' : 'w';
+  let found: { piece: PieceSymbol; target: PieceSymbol; targetSq: Square } | null = null;
+  for (const t of after.board().flat()) {
+    if (!t || t.color !== them || t.type === 'p') continue;
+    for (const sq of after.attackers(t.square, me)) {
+      const slider = after.get(sq)!;
+      if (sq === move.to || !'brq'.includes(slider.type) || before.attackers(t.square, me).includes(sq)) continue;
+      const valuable = t.type === 'k' || VALUES[t.type] > VALUES[slider.type] || !after.attackers(t.square, them).length;
+      if (valuable && (!found || VALUES[t.type] > VALUES[found.target])) found = { piece: slider.type, target: t.type, targetSq: t.square };
+    }
+  }
+  return found;
 }
 
 /**
@@ -266,6 +312,20 @@ export function explainMove(node: TreeNode): { facts: string[]; cause?: string; 
       pin.behind === 'k'
         ? `${move.san} cloue ${article(pin.type)}${NAMES[pin.type]} en ${pin.pinned} : il ne peut plus bouger, le roi est derrière.`
         : `${move.san} cloue ${article(pin.type)}${NAMES[pin.type]} en ${pin.pinned} : s'il bouge, la dame derrière sera prise.`,
+    );
+  }
+  const skewer = skewerByMove(after, move);
+  if (skewer) {
+    facts.push(
+      `${move.san} est une enfilade : ${article(skewer.front)}${NAMES[skewer.front]} doit s'écarter, et ${article(skewer.behind)}${NAMES[skewer.behind]} en ${skewer.behindSq}, juste derrière, sera pris${skewer.behind === 'q' || skewer.behind === 'r' ? 'e' : ''}.`,
+    );
+  }
+  const disco = discoveredAttack(move);
+  if (disco) {
+    facts.push(
+      disco.target === 'k'
+        ? `${move.san} donne un échec à la découverte : en partant, ${article(move.piece)}${NAMES[move.piece]} ouvre la ligne ${disco.piece === 'b' ? 'du' : 'de la'} ${NAMES[disco.piece]}.`
+        : `${move.san} est une attaque à la découverte : en partant, ${article(move.piece)}${NAMES[move.piece]} ouvre la ligne ${disco.piece === 'b' ? 'du' : 'de la'} ${NAMES[disco.piece]}, qui attaque ${article(disco.target)}${NAMES[disco.target]} en ${disco.targetSq}.`,
     );
   }
   if (review.classification === 'great' && before?.lines[1]) {
@@ -432,15 +492,23 @@ export function describeMove(fenBefore: string, move: Move): string {
   if (move.flags.includes('k') || move.flags.includes('q')) return 'met ton roi à l\'abri en roquant';
   const fork = forkTargets(after, move);
   const pin = pinByMove(after, move);
+  const skewer = skewerByMove(after, move);
+  const disco = discoveredAttack(move);
   const mateNext = after.inCheck() ? undefined : mateInOne(withTurn(move.after, me));
-  // Ce que le coup menace en plus (mat, fourchette, clouage), à ajouter après une prise.
+  // Ce que le coup menace en plus (mat, fourchette, clouage…), à ajouter après une prise.
   const threat = mateNext
     ? `menace ${mateNext}, échec et mat`
     : fork.length
     ? `attaque ${fork.map((x) => article(x) + NAMES[x]).join(' et ')} en même temps`
     : pin
       ? `cloue ${article(pin.type)}${NAMES[pin.type]} adverse contre ${pin.behind === 'k' ? 'son roi' : 'sa dame'}`
-      : '';
+      : skewer
+        ? `fait une enfilade : ${article(skewer.front)}${NAMES[skewer.front]} adverse doit s'écarter et laisser prendre ${article(skewer.behind)}${NAMES[skewer.behind]}`
+        : disco
+          ? disco.target === 'k'
+            ? `donne un échec à la découverte avec ${article(disco.piece)}${NAMES[disco.piece]}`
+            : `découvre une attaque ${disco.piece === 'b' ? 'du' : 'de la'} ${NAMES[disco.piece]} sur ${article(disco.target)}${NAMES[disco.target]} en ${disco.targetSq}`
+          : '';
   if (move.captured) {
     const take =
       p === 'p' && move.captured === 'p' && 'cdef'.includes(move.to[0])

@@ -10,7 +10,7 @@ import { playMove } from './tree';
 import { $, esc, pct } from './ui';
 // shortcut: import circulaire avec main.ts (échiquier, partie affichée) ; sans danger tant que ce
 // fichier n'utilise ces noms que dans des fonctions. Passer par un module d'état si ça grossit.
-import { board, current, go, load, profileName, renderMoves, root, show } from './main';
+import { board, choosePromotion, current, go, load, profileName, renderMoves, root, show } from './main';
 
 /** Ligne du catalogue affichée (null : la liste des ouvertures). */
 let openingLine: CatalogueLine | null = null;
@@ -241,14 +241,14 @@ function trainingStep() {
   }
 }
 
-export function trainingMove(orig: Key, dest: Key) {
+export async function trainingMove(orig: Key, dest: Key) {
   const t = training!;
   const node = current!;
-  const piece = new Chess(node.fen).get(orig as Square);
-  const promo = piece?.type === 'p' && (dest[1] === '8' || dest[1] === '1') ? 'q' : undefined;
+  const promo = await choosePromotion(node.fen, orig, dest);
+  if (promo === null || training !== t || current !== node) return show(current!);
   let san = '';
   try {
-    san = new Chess(node.fen).move({ from: orig, to: dest, promotion: promo }).san;
+    san = new Chess(node.fen).move({ from: orig, to: dest, promotion: promo || undefined }).san;
   } catch {
     return show(node);
   }

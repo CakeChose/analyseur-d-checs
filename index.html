@@ -18,6 +18,16 @@
       <button id="go-profile" class="primary">Profil</button>
     </header>
 
+    <!-- Choix de la pièce lors d'une promotion -->
+    <dialog id="promo-dialog" class="import-dialog promo-dialog" aria-label="Choisir la pièce de promotion">
+      <form method="dialog" class="promo-choices">
+        <button value="q" title="Dame"><span class="cg-wrap"><piece data-role="queen"></piece></span></button>
+        <button value="r" title="Tour"><span class="cg-wrap"><piece data-role="rook"></piece></span></button>
+        <button value="b" title="Fou"><span class="cg-wrap"><piece data-role="bishop"></piece></span></button>
+        <button value="n" title="Cavalier"><span class="cg-wrap"><piece data-role="knight"></piece></span></button>
+      </form>
+    </dialog>
+
     <!-- Fenêtre d'import : parties en ligne ou PGN collé -->
     <dialog id="import-dialog" class="import-dialog">
       <form method="dialog" class="dialog-head">

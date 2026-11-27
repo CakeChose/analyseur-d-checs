@@ -124,14 +124,17 @@ https://cakechose.github.io/analyseur-d-checs/**
 - Courbe de la probabilité de gain sur toute la partie, cliquable, points colorés sur les erreurs et coups brillants.
 
 ### Mode exploration (jouer ses propres coups) — fait
-- Depuis n'importe quelle position, jouer un autre coup sur l'échiquier (promotion automatique en dame).
+- Depuis n'importe quelle position, jouer un autre coup sur l'échiquier. Promotion : une petite fenêtre propose
+  dame, tour, fou ou cavalier (aussi dans les problèmes et l'entraînement aux ouvertures) ; la fermer annule le coup.
 - Analyse en direct par le moteur, classification du coup essayé.
 - Arbre de variantes (la partie principale reste intacte), sous-variantes, suppression, ↑ pour revenir à la partie.
 
 ### Moteur d'explication — fait
 - Couche 1 (règles, fiable) : faits extraits de Stockfish + chess.js :
   - réfutation : "l'adversaire répond X et gagne un cavalier" (bilan matériel sur la ligne du moteur) ;
-  - pièce en prise, mat forcé, fourchette, clouage (devant le roi ou la dame) ;
+  - pièce en prise, mat forcé, fourchette, clouage (devant le roi ou la dame), enfilade (une pièce forte
+    doit s'écarter et laisse prendre celle de derrière), attaque à la découverte (la pièce jouée libère
+    la ligne d'un fou, d'une tour ou d'une dame ; échec à la découverte) ;
   - ce que le meilleur coup obtenait (gain de matériel, mat en N, évaluation) ;
   - sacrifice d'un coup brillant, seul coup, occasion manquée ;
   - menace ignorée (la suite gagnante adverse marchait déjà avant le coup, vérifiée en rejouant
@@ -139,7 +142,7 @@ https://cakechose.github.io/analyseur-d-checs/**
 - Coach (format inspiré de la Revue de partie de chess.com, avec nos propres phrases) :
   - carte « ton coup » : verdict, évaluation, une phrase (ton selon la note + raison) ;
   - carte « meilleur coup » s'il est différent : ce qu'il fait (`describeMove` : mat, menace de mat,
-    promotion, roque, prise, fourchette, clouage, échec, attaque, mise à l'abri, défense,
+    promotion, roque, prise, fourchette, clouage, enfilade, attaque ou échec à la découverte, échec, attaque, mise à l'abri, défense,
     développement, centre, colonne ouverte, pion passé) ;
   - « Voir la suite » sur chaque carte (la ligne du moteur jouée sur l'échiquier comme une variante) ;
   - la liste complète des faits repliée sous « Détails ».
@@ -176,7 +179,7 @@ https://cakechose.github.io/analyseur-d-checs/**
 9. ~~Version mobile : interface adaptée au téléphone + appli installable (PWA) (voir ci-dessous).~~
 
 ## Phase 8 : profil du joueur — fait (onglet « Mon profil », `src/profile.ts`)
-Non fait : enfilade et attaque à la découverte, problèmes de la base Lichess, vrais comptes.
+Non fait : problèmes de la base Lichess, vrais comptes.
 
 Objectif : analyser les N dernières parties d'un joueur chess.com, garder ces analyses,
 et en tirer une synthèse de ses erreurs les plus fréquentes, puis des exercices ciblés.
@@ -235,9 +238,8 @@ et en tirer une synthèse de ses erreurs les plus fréquentes, puis des exercice
 - **Pression du temps** : les PGN chess.com contiennent la pendule (`%clk`) → erreurs avec moins
   de 10 % du temps restant.
 - Contexte : couleur jouée, cadence, ouverture (code ECO).
-- Le code de détection de `explain.ts` est réutilisé (fourchette, clouage, mat, bilan matériel).
-  Une erreur sans tactique détectée est classée « erreur de position ». Enfilade et attaque à la
-  découverte : plus tard.
+- Le code de détection de `explain.ts` est réutilisé (fourchette, clouage, enfilade, attaque à la
+  découverte, mat, bilan matériel). Une erreur sans tactique détectée est classée « erreur de position ».
 
 ### 8.3 Synthèse du profil
 - Une synthèse par cadence (rapide, blitz, bullet, par jour) : on ne mélange pas les cadences.
@@ -409,9 +411,8 @@ On construit d'abord le **squelette** (10.1 à 10.4), puis les **pages d'apprent
 
 ## Pistes pour la suite
 - Brillant : trop peu d'exemples chez chess.com (3) pour le calibrer.
-- Choix de la pièce lors d'une promotion (aujourd'hui : dame automatique).
 - Coach : nouveaux motifs à partir des phrases qui sonnent faux sur de vraies parties
-  (structure de pions, pièce piégée, roi exposé, enfilade, attaque à la découverte).
+  (structure de pions, pièce piégée, roi exposé).
 - Commentaires rédigés par une IA installée sur le PC (Ollama, modèle 7–8B), pré-calculés pendant
   l'analyse en lot du profil : meilleure qualité que l'IA dans le navigateur, mais pour soi seul.
 - Appli de bureau (Tauri).

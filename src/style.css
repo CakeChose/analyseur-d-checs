@@ -807,6 +807,36 @@ button.primary {
   border-bottom-width: 2px;
 }
 
+/* Choix de la pièce de promotion */
+.import-dialog.promo-dialog {
+  width: fit-content;
+  padding: 12px;
+}
+.promo-choices {
+  display: flex;
+  gap: 8px;
+}
+.promo-choices button {
+  width: 64px;
+  height: 64px;
+  padding: 4px;
+  border-radius: 10px;
+}
+.promo-choices .cg-wrap {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.promo-choices .cg-wrap piece {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  transform: none;
+  background-size: cover;
+}
+
 /* Fenêtre d'import */
 .import-dialog {
   width: min(560px, calc(100vw - 32px));
