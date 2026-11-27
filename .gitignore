@@ -13,3 +13,4 @@ graphify-out/20*/
 
 # moteur copié depuis node_modules par scripts/copy-stockfish.mjs
 public/stockfish/
+scripts/.calibration-cache.json
