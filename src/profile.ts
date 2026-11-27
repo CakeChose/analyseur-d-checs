@@ -183,6 +183,8 @@ export interface GameSummary {
   wasWinning: boolean;
   /** Demi-coup où la position gagnante a été atteinte (pour l'exemple « avantage gâché »). */
   winningPly: number;
+  /** Elo du joueur au moment de la partie (0 si inconnu). */
+  elo: number;
   /** Nombre de coups du joueur par classification (brillants, gaffes…). */
   counts: Partial<Record<Classification, number>>;
   /** Coups brillants : position juste après le coup, pour les miniatures. */
@@ -231,6 +233,7 @@ export function summarize(fiche: Fiche, username: string): GameSummary | null {
     tacticsFound: 0,
     wasWinning: false,
     winningPly: 0,
+    elo: Number(color === 'w' ? h.WhiteElo : h.BlackElo) || 0,
     counts: {},
     brilliants: [],
   };
@@ -280,7 +283,7 @@ export function summarize(fiche: Fiche, username: string): GameSummary | null {
 
 export interface ProfileStats {
   games: GameSummary[];
-  /** Les RECENT dernières parties : base des erreurs, causes et problèmes. */
+  /** Les RECENT dernières parties et celles à ±ELO_RANGE de l'Elo actuel : base des erreurs, causes et problèmes. */
   recent: GameSummary[];
   record: { win: number; draw: number; loss: number };
   accuracy: { all: number; w: number; b: number };
@@ -294,6 +297,7 @@ export interface ProfileStats {
 }
 
 export const RECENT = 100;
+export const ELO_RANGE = 100;
 
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 
@@ -305,8 +309,12 @@ function groupBy<T>(xs: T[], key: (x: T) => string): Map<string, T[]> {
 
 /** `minLoss` : ne garder que les erreurs qui font perdre au moins autant de points de chances de gain. */
 export function profileStats(games: GameSummary[], minLoss = 0): ProfileStats {
-  // Erreurs, causes et problèmes : seulement les parties récentes (les vieilles erreurs ne reflètent plus le niveau).
-  const recent = [...games].sort((a, b) => b.date.localeCompare(a.date)).slice(0, RECENT);
+  // Erreurs, causes et problèmes : les parties récentes, plus les anciennes jouées à un Elo proche de l'actuel
+  // (par cadence) ; les autres erreurs ne reflètent plus le niveau.
+  const sorted = [...games].sort((a, b) => b.date.localeCompare(a.date));
+  const eloNow = new Map<string, number>();
+  for (const g of sorted) if (g.elo && !eloNow.has(g.speed)) eloNow.set(g.speed, g.elo);
+  const recent = sorted.filter((g, i) => i < RECENT || (g.elo > 0 && Math.abs(g.elo - (eloNow.get(g.speed) ?? -1e9)) <= ELO_RANGE));
   const mistakes = recent.flatMap((g) => g.mistakes).filter((m) => m.loss >= minLoss);
   const record = { win: 0, draw: 0, loss: 0 };
   for (const g of games) record[g.result]++;

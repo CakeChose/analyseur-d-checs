@@ -35,6 +35,8 @@ import {
   type GameSummary,
   type MistakeRecord,
   type ProfileStats,
+  ELO_RANGE,
+  RECENT,
 } from './profile';
 import { winPercent } from './winprob';
 import { coachText, mateFor, playLine } from './explain';
@@ -1508,14 +1510,14 @@ function renderProfile(s: ProfileStats, list: OnlineGame[], summaries: GameSumma
       <select id="profile-minloss">${LOSS_FILTERS.map(
         ([v, l]) => `<option value="${v}" ${v === profileMinLoss ? 'selected' : ''}>${l}</option>`,
       ).join('')}</select></label>`;
-  const exos = s.causes.filter((c) => c.tag !== 'gache').reduce((a, c) => a + c.count, 0);
+  const exos = profileMistakes.filter((m) => m.onlyMove && m.loss >= profileMinLoss).length;
   const navCards = `<button class="card nav-card" data-goto="ouvertures"><b>Ouvertures</b>
       <span class="muted">${s.openings[0] ? `Ta plus jouée : ${esc(s.openings[0].name.slice(s.openings[0].name.indexOf(' ') + 1))}` : 'Catalogue et entraînement'}</span></button>`;
   const probCard = n
     ? `<button class="card nav-card" data-goto="problemes"><b>Problèmes</b><span class="muted">${exos} exercices tirés de tes erreurs</span></button>`
     : '';
   $('profile-side').innerHTML = n
-    ? `<h2 class="side-title">À travailler</h2>${n > s.recent.length ? `<p class="muted">D'après tes ${s.recent.length} dernières parties.</p>` : ''}${probCard}${navCards}${weak}${lossSelect}<div class="cause-list">${causes}</div>`
+    ? `<h2 class="side-title">À travailler</h2>${n > s.recent.length ? `<p class="muted">D'après ${s.recent.length} parties : les ${RECENT} dernières et celles jouées à ±${ELO_RANGE} de ton Elo actuel.</p>` : ''}${probCard}${navCards}${weak}${lossSelect}<div class="cause-list">${causes}</div>`
     : `<h2 class="side-title">À travailler</h2>${navCards}<section class="card"><p>Analyse tes parties pour découvrir tes erreurs les plus fréquentes.</p>
        <button class="primary" data-run>Analyser toutes les parties</button></section>`;
 }
