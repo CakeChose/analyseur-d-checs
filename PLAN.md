@@ -200,6 +200,9 @@ et en tirer une synthèse de ses erreurs les plus fréquentes, puis des exercice
 - Profondeur 12 pour le lot (3 à 4 fois plus rapide que 16). Ordre de grandeur : 50 parties en
   quelques minutes avec 6 moteurs. (Sauter les positions du livre : gain faible, pas fait.)
 - Les parties déjà analysées (cache) ne sont pas recalculées.
+- Choix « Toutes » : tout l'historique chess.com, en plusieurs fois (pause, puis relance : seules les
+  parties manquantes sont analysées). Pour changer d'ordi en cours de route : exporter, importer
+  sur l'autre (fusion), relancer. Ordre de grandeur : 1 000 parties ≈ 2 à 3 h avec 7 moteurs.
 
 ### 8.2 Étiquettes de chaque erreur (imprécision, erreur, gaffe, raté)
 - **Phase** : ouverture (encore dans le livre ou avant le coup ~12), milieu, finale
@@ -231,6 +234,14 @@ et en tirer une synthèse de ses erreurs les plus fréquentes, puis des exercice
   (ouvre la partie sur la position).
 - Ouvertures : les plus jouées, avec le score et la précision dans chacune.
 - Forces : ce qui va bien (peu d'erreurs dans une phase, tactiques trouvées, bonne conversion).
+- Deux périmètres (`profileStats` dans `profile.ts`) :
+  - **Statistiques** (précision, bilan V/N/D, coups par type, brillants, ouvertures, courbe par
+    mois) : toutes les parties analysées, ou les 100 / 50 dernières (menu à droite des onglets).
+  - **Erreurs** (causes, point faible, erreurs par phase, problèmes) : les 100 dernières parties
+    (`RECENT`) plus les anciennes jouées à ±100 de l'Elo actuel (`ELO_RANGE`), par cadence. Les
+    vieilles erreurs d'un niveau très différent ne servent plus à grand-chose. Le menu ne les change pas.
+- Bilan V/N/D calculé sur les parties analysées (suit le menu) ; le bilan complet de chess.com
+  reste dans l'encadré de la cadence.
 
 ### 8.4 Exercices ciblés
 - Version 1 : réutiliser le mode « Réessayer » sur **ses propres erreurs**, filtrées par faiblesse
