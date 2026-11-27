@@ -30,10 +30,10 @@
     "semantic_hash": ""
   },
   "src/cache.ts": {
-    "mtime": 1795456981.4168472,
-    "seen": 1795798794.62706,
-    "ast_hash": "1bc7233850565854ede0230fc49ac843",
-    "semantic_hash": "1bc7233850565854ede0230fc49ac843"
+    "mtime": 1795806311.1636972,
+    "seen": 1795806411.3986971,
+    "ast_hash": "10e0cfe57689fbb85b186c1430d4b7f6",
+    "semantic_hash": ""
   },
   "src/engine.ts": {
     "mtime": 1795452600.8493745,
@@ -102,9 +102,9 @@
     "semantic_hash": "968289f3564c54fb4cab9302b05757bb"
   },
   "src/profile.ts": {
-    "mtime": 1795805734.4012463,
-    "seen": 1795805839.2191331,
-    "ast_hash": "6828db3ab999445d9314b4d3ecd44113",
+    "mtime": 1795806292.4510405,
+    "seen": 1795806411.3986971,
+    "ast_hash": "29e1b5999c6075eef8e1164ba5c3868d",
     "semantic_hash": ""
   },
   "public/sw.js": {
