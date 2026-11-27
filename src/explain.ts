@@ -7,6 +7,7 @@ import type { EngineLine } from './engine';
 import type { TreeNode } from './tree';
 import { uciToSan } from './game';
 import { formatScore } from './engine';
+import { winPercent } from './winprob';
 
 const NAMES: Record<PieceSymbol, string> = {
   p: 'pion',
@@ -70,6 +71,23 @@ export function netCaptures(moves: { color: Color; captured?: PieceSymbol }[], w
   // et prendre un pion en perdant un cavalier n'en est pas un non plus.
   if (value(won) - value(lost) < 1) return { won: [], lost: [] };
   return { won, lost };
+}
+
+/**
+ * Ce que `who` donne sur une ligne : prises adverses moins ses propres prises, les pièces de même
+ * valeur s'annulant (fou contre cavalier = échange). Contrairement à `netCaptures`, aucun gain n'est
+ * exigé : c'est justement le matériel abandonné par un sacrifice.
+ */
+function sacrificed(moves: { color: Color; captured?: PieceSymbol }[], who: Color): { lost: PieceSymbol[]; won: PieceSymbol[] } {
+  const lost = moves.flatMap((m) => (m.captured && m.color !== who ? [m.captured] : []));
+  const won: PieceSymbol[] = [];
+  for (const m of moves) {
+    if (!m.captured || m.color !== who) continue;
+    const j = lost.findIndex((p) => VALUES[p] === VALUES[m.captured!]);
+    if (j >= 0) lost.splice(j, 1);
+    else won.push(m.captured);
+  }
+  return { lost, won };
 }
 
 /** "un cavalier", ou "un cavalier contre un pion" s'il y a eu des prises en retour. */
@@ -589,11 +607,34 @@ export function coachText(node: TreeNode): { played: string; best?: { san: strin
       played = say(seed, 'Un coup connu de la théorie des ouvertures.', 'Coup de théorie : tu restes en terrain connu.');
       break;
     case 'brilliant': {
-      const line = node.eval?.lines[0] ? playLine(node.fen, node.eval.lines[0].pv, 4) : [];
-      const lost = netCaptures([move, ...line], me).lost[0];
-      played = lost
-        ? say(seed, `Superbe sacrifice de ${ton(lost)}${NAMES[lost]} ! Une vraie idée tactique.`, `Très bien vu : sacrifier ${ton(lost)}${NAMES[lost]} était difficile à trouver.`)
-        : say(seed, 'Très bien vu ! Ce coup était difficile à trouver.', 'Brillant : peu de joueurs auraient vu ce coup.');
+      const reply = node.eval?.lines[0];
+      // Ce que le coup abandonne sur la suite du moteur (4 demi-coups, après nos reprises) : pas le
+      // bilan net, qui s'annule justement quand le sacrifice est payant.
+      const line = [move, ...(reply ? playLine(node.fen, reply.pv, 4) : [])];
+      const { lost, won } = sacrificed(line, me);
+      const taken = lost.length === 1 ? line.find((m) => m.color !== me && m.captured === lost[0]) : undefined;
+      const what = taken
+        ? `${ton(lost[0])}${NAMES[lost[0]]} en ${taken.to}`
+        : listPieces(lost);
+      const extra = won.length ? ` contre ${listPieces(won)}` : '';
+      const intro = !lost.length
+        ? say(seed, 'Très bien vu ! Ce coup était difficile à trouver.', 'Brillant : peu de joueurs auraient vu ce coup.')
+        : `${say(seed, 'Superbe sacrifice', 'Sacrifice brillant')} : tu laisses prendre ${what}${extra}.`;
+      // Pourquoi c'est bien : ce que fait le coup, puis ce que la suite rapporte.
+      const mate = mateFor(reply, me);
+      const back = reply && !mate ? netCaptures([move, ...playLine(node.fen, reply.pv, 8)], me) : { won: [], lost: [] };
+      const pov = reply ? (me === 'w' ? winPercent(reply) : 100 - winPercent(reply)) : 50;
+      const standing = pov >= 90 ? 'tu restes nettement gagnant' : pov >= 65 ? "tu gardes l'avantage" : pov >= 40 ? 'la position reste équilibrée' : 'tu limites les dégâts';
+      const payoff = mate
+        ? `En échange, tu as un mat en ${mate}`
+        : back.won.length
+          ? `En échange, tu regagnes ${describeGain(back)} sur la suite`
+          : reply
+            ? `Le matériel donné ne compte pas : ${standing} (${formatScore(reply)})`
+            : '';
+      const why = `Ce coup ${desc}.${payoff ? ` ${payoff}.` : ''}`;
+      const next = reply?.pv.length ? ` Suite prévue : ${lineText(node.fen, reply.pv, mate ? mate * 2 - 1 : 6)}.` : '';
+      played = `${intro} ${why}${next}`;
       break;
     }
     case 'great':

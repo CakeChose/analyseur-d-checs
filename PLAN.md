@@ -137,6 +137,11 @@ https://cakechose.github.io/analyseur-d-checs/**
     la ligne d'un fou, d'une tour ou d'une dame ; échec à la découverte) ;
   - ce que le meilleur coup obtenait (gain de matériel, mat en N, évaluation) ;
   - sacrifice d'un coup brillant, seul coup, occasion manquée ;
+  - coup brillant (coach) : la pièce laissée et sa case (pièces de même valeur qui s'échangent annulées,
+    sans exiger de gain net), ce que fait le coup, puis pourquoi c'est bien (mat, matériel regagné, ou
+    « le matériel donné ne compte pas : tu restes nettement gagnant »), et la suite prévue. Le sacrifice
+    peut venir au coup d'après sur la ligne du moteur (Bxc3 puis Rxg2+) : la règle Brillant mesure sur
+    4 demi-coups, et la limiter au coup lui-même faisait perdre un brillant de chess.com (Rfc8) ;
   - menace ignorée (la suite gagnante adverse marchait déjà avant le coup, vérifiée en rejouant
     toute la suite du moteur), défenseur retiré, ce que le meilleur coup empêchait.
 - Coach (format inspiré de la Revue de partie de chess.com, avec nos propres phrases) :
