@@ -1473,7 +1473,7 @@ function renderProfile(s: ProfileStats, list: OnlineGame[], summaries: GameSumma
   // Droite : ce qu'on peut travailler (cartes cliquables).
   profileExamples = [];
   profileCauses = s.causes;
-  profileMistakes = s.games.flatMap((g) => g.mistakes);
+  profileMistakes = s.recent.flatMap((g) => g.mistakes);
   const example = (m: MistakeRecord) => {
     profileExamples.push(m);
     const what = m.san ? `coup ${Math.ceil(m.ply / 2)} : ${esc(m.san)}` : `position gagnante au coup ${Math.ceil(m.ply / 2)}`;
@@ -1498,7 +1498,7 @@ function renderProfile(s: ProfileStats, list: OnlineGame[], summaries: GameSumma
   const causes = s.causes
     .map((c, i) => {
       const label = c.tag === 'gache' ? 'Avantage gâché' : TAGS[c.tag];
-      const share = c.tag === 'gache' ? `${pct((100 * c.count) / n)} des parties` : pct((100 * c.count) / s.totalMistakes);
+      const share = c.tag === 'gache' ? `${pct((100 * c.count) / s.recent.length)} des parties` : pct((100 * c.count) / s.totalMistakes);
       const train = c.tag === 'gache' ? '' : trainButton(c, i);
       return `<details class="cause-card"><summary><span>${label}</span><span class="muted">${share}</span></summary>
         ${train}<ul class="examples">${c.examples.slice(-8).reverse().map(example).join('')}</ul></details>`;
@@ -1515,7 +1515,7 @@ function renderProfile(s: ProfileStats, list: OnlineGame[], summaries: GameSumma
     ? `<button class="card nav-card" data-goto="problemes"><b>Problèmes</b><span class="muted">${exos} exercices tirés de tes erreurs</span></button>`
     : '';
   $('profile-side').innerHTML = n
-    ? `<h2 class="side-title">À travailler</h2>${probCard}${navCards}${weak}${lossSelect}<div class="cause-list">${causes}</div>`
+    ? `<h2 class="side-title">À travailler</h2>${n > s.recent.length ? `<p class="muted">D'après tes ${s.recent.length} dernières parties.</p>` : ''}${probCard}${navCards}${weak}${lossSelect}<div class="cause-list">${causes}</div>`
     : `<h2 class="side-title">À travailler</h2>${navCards}<section class="card"><p>Analyse tes parties pour découvrir tes erreurs les plus fréquentes.</p>
        <button class="primary" data-run>Analyser toutes les parties</button></section>`;
 }

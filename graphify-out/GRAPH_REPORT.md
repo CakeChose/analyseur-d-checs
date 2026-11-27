@@ -1,7 +1,7 @@
-# Graph Report - analyseur-d-checs  (2026-11-25)
+# Graph Report - analyseur d'échecs  (2026-11-27)
 
 ## Corpus Check
-- 22 files · ~22,674 words
+- 23 files · ~57,289 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 4 file(s) not represented in the graph (top: (none) 2, .webmanifest 1, .css 1)
 
@@ -11,7 +11,7 @@
 - Token cost: 167,135 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `d89a7a12`
+- Built from commit: `489cfb26`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -21,7 +21,7 @@
 - Workflow de déploiement
 - Dépendances npm
 - main.ts
-- openings-view.ts
+- $
 - problems.ts
 - explain.ts
 - tree.ts
@@ -41,16 +41,16 @@
 10. `describeMove()` - 13 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `searchOnline()` --calls--> `fetchChessCom()`  [EXTRACTED]
-  src/main.ts → src/import.ts
-- `analyseProfile()` --calls--> `fetchChessCom()`  [EXTRACTED]
-  src/profile.ts → src/import.ts
-- `searchOnline()` --calls--> `fetchLichess()`  [EXTRACTED]
-  src/main.ts → src/import.ts
 - `onUserMove()` --calls--> `playMove()`  [EXTRACTED]
   src/main.ts → src/tree.ts
+- `show()` --calls--> `renderBookMoves()`  [EXTRACTED]
+  src/main.ts → src/openings-view.ts
 - `renderEval()` --calls--> `uciToSan()`  [EXTRACTED]
   src/main.ts → src/game.ts
+- `analyseLive()` --calls--> `reviewMove()`  [EXTRACTED]
+  src/main.ts → src/analysis.ts
+- `analyseLive()` --calls--> `renderBookMoves()`  [EXTRACTED]
+  src/main.ts → src/openings-view.ts
 
 ## Import Cycles
 - 2-file cycle: `src/main.ts -> src/openings-view.ts -> src/main.ts`
@@ -60,11 +60,11 @@
 
 ### Community 0 - "profile.ts"
 Cohesion: 0.09
-Nodes (34): analyseGame(), Classification, puzzlePosition(), cacheAll(), cacheGet(), cachePut(), run(), Game (+26 more)
+Nodes (28): Classification, cacheAll(), cacheGet(), cachePut(), run(), Game, parseClock(), parsePgn() (+20 more)
 
 ### Community 1 - "analysis.ts"
-Cohesion: 0.10
-Nodes (22): evaluatePosition(), gameAccuracy(), GameAnalysis, isSacrifice(), LABELS, materialBalance(), moveAccuracy(), onlyGoodMove() (+14 more)
+Cohesion: 0.11
+Nodes (24): analyseGame(), evaluatePosition(), gameAccuracy(), GameAnalysis, isSacrifice(), LABELS, markBook(), materialBalance() (+16 more)
 
 ### Community 2 - "Workflow de déploiement"
 Cohesion: 0.06
@@ -76,15 +76,15 @@ Nodes (24): dependencies, chess.js@^1.4.0, @lichess-org/chessground@^10.5.0, sto
 
 ### Community 4 - "main.ts"
 Cohesion: 0.06
-Nodes (59): chessComPlayerExists(), fetchChessCom(), fetchChessComStats(), fetchLichess(), OnlineGame, SpeedStats, accById, BAD (+51 more)
+Nodes (64): chessComPlayerExists(), fetchChessCom(), fetchChessComStats(), fetchLichess(), OnlineGame, SpeedStats, accById, BAD (+56 more)
 
-### Community 5 - "openings-view.ts"
+### Community 5 - "$"
 Cohesion: 0.15
-Nodes (19): board, current, go, root, CatalogueLine, loadBook(), loadCatalogue(), familyIndex() (+11 more)
+Nodes (21): board, current, go, root, CatalogueLine, loadBook(), loadCatalogue(), familyIndex() (+13 more)
 
 ### Community 6 - "problems.ts"
-Cohesion: 0.15
-Nodes (27): profileCauses, profileMistakes, profileName, recordPuzzle(), showView(), startPuzzleQueue(), exoKey(), ExoScore (+19 more)
+Cohesion: 0.16
+Nodes (26): profileCauses, profileMistakes, profileName, showView(), startPuzzleQueue(), exoKey(), ExoScore, exoScore() (+18 more)
 
 ### Community 7 - "explain.ts"
 Cohesion: 0.14
@@ -100,7 +100,7 @@ Nodes (11): compilerOptions, isolatedModules, lib, module, moduleResolution, noE
 
 ### Community 10 - "$"
 Cohesion: 0.11
-Nodes (47): markBook(), reviewGame(), formatScore(), analyseLive(), applyAnalysis(), clearEngine(), estimateElo(), finishAnalysis() (+39 more)
+Nodes (46): formatScore(), gameId(), analyseLive(), applyAnalysis(), clearEngine(), estimateElo(), finishAnalysis(), importDialog() (+38 more)
 
 ## Knowledge Gaps
 - **1 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
@@ -108,15 +108,15 @@ Nodes (47): markBook(), reviewGame(), formatScore(), analyseLive(), applyAnalysi
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `chess.js` connect `Dépendances npm` to `profile.ts`, `analysis.ts`, `main.ts`, `openings-view.ts`, `explain.ts`, `tree.ts`?**
+- **Why does `chess.js` connect `Dépendances npm` to `profile.ts`, `analysis.ts`, `main.ts`, `$`, `explain.ts`, `tree.ts`?**
   _High betweenness centrality (0.095) - this node is a cross-community bridge._
 - **Should `profile.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.09388335704125178 - nodes in this community are weakly interconnected._
-- **Why does `@lichess-org/chessground` connect `Dépendances npm` to `main.ts`, `openings-view.ts`?**
+  _Cohesion score 0.0928030303030303 - nodes in this community are weakly interconnected._
+- **Why does `@lichess-org/chessground` connect `Dépendances npm` to `main.ts`, `$`?**
   _High betweenness centrality (0.035) - this node is a cross-community bridge._
 - **Should `analysis.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.10416666666666667 - nodes in this community are weakly interconnected._
-- **Why does `Engine` connect `analysis.ts` to `profile.ts`, `main.ts`?**
+  _Cohesion score 0.1140819964349376 - nodes in this community are weakly interconnected._
+- **Why does `Engine` connect `analysis.ts` to `profile.ts`, `$`, `main.ts`?**
   _High betweenness centrality (0.030) - this node is a cross-community bridge._
 - **Should `Workflow de déploiement` be split into smaller, more focused modules?**
   _Cohesion score 0.0625 - nodes in this community are weakly interconnected._

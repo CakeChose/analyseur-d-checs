@@ -280,6 +280,8 @@ export function summarize(fiche: Fiche, username: string): GameSummary | null {
 
 export interface ProfileStats {
   games: GameSummary[];
+  /** Les RECENT dernières parties : base des erreurs, causes et problèmes. */
+  recent: GameSummary[];
   record: { win: number; draw: number; loss: number };
   accuracy: { all: number; w: number; b: number };
   byPhase: { phase: Phase; moves: number; mistakes: number; per100: number }[];
@@ -291,6 +293,8 @@ export interface ProfileStats {
   strengths: string[];
 }
 
+export const RECENT = 100;
+
 const mean = (xs: number[]) => (xs.length ? xs.reduce((a, b) => a + b, 0) / xs.length : 0);
 
 function groupBy<T>(xs: T[], key: (x: T) => string): Map<string, T[]> {
@@ -301,12 +305,14 @@ function groupBy<T>(xs: T[], key: (x: T) => string): Map<string, T[]> {
 
 /** `minLoss` : ne garder que les erreurs qui font perdre au moins autant de points de chances de gain. */
 export function profileStats(games: GameSummary[], minLoss = 0): ProfileStats {
-  const mistakes = games.flatMap((g) => g.mistakes).filter((m) => m.loss >= minLoss);
+  // Erreurs, causes et problèmes : seulement les parties récentes (les vieilles erreurs ne reflètent plus le niveau).
+  const recent = [...games].sort((a, b) => b.date.localeCompare(a.date)).slice(0, RECENT);
+  const mistakes = recent.flatMap((g) => g.mistakes).filter((m) => m.loss >= minLoss);
   const record = { win: 0, draw: 0, loss: 0 };
   for (const g of games) record[g.result]++;
 
   const byPhase = PHASES.map((phase) => {
-    const moves = games.reduce((a, g) => a + g.movesByPhase[phase], 0);
+    const moves = recent.reduce((a, g) => a + g.movesByPhase[phase], 0);
     const n = mistakes.filter((m) => m.phase === phase).length;
     return { phase, moves, mistakes: n, per100: moves ? (100 * n) / moves : 0 };
   });
@@ -318,7 +324,7 @@ export function profileStats(games: GameSummary[], minLoss = 0): ProfileStats {
     })
     .filter((c) => c.count > 0);
   // Avantage gâché : se compte par partie, pas par coup.
-  const gache = games.filter((g) => g.wasWinning && g.result !== 'win');
+  const gache = recent.filter((g) => g.wasWinning && g.result !== 'win');
   if (gache.length) {
     causes.push({
       tag: 'gache',
@@ -355,7 +361,7 @@ export function profileStats(games: GameSummary[], minLoss = 0): ProfileStats {
 
   // Forces : ce qui va mieux que le reste.
   const strengths: string[] = [];
-  const found = games.reduce((a, g) => a + g.tacticsFound, 0);
+  const found = recent.reduce((a, g) => a + g.tacticsFound, 0);
   const missed = mistakes.filter((m) => m.tags.some((t) => t.startsWith('manquee-'))).length;
   if (found + missed >= 5) {
     strengths.push(`Tactiques trouvées : ${found} sur ${found + missed} (${Math.round((100 * found) / (found + missed))} %).`);
@@ -374,6 +380,7 @@ export function profileStats(games: GameSummary[], minLoss = 0): ProfileStats {
 
   return {
     games,
+    recent,
     record,
     accuracy: {
       all: mean(games.map((g) => g.accuracy)),
