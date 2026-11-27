@@ -24,9 +24,9 @@
     "semantic_hash": "76144cf61a018439fad00124d8fe2c22"
   },
   "src/analysis.ts": {
-    "mtime": 1795805703.9298623,
-    "seen": 1795805839.2191331,
-    "ast_hash": "6b9d3e996253e167990ff57e97204111",
+    "mtime": 1795818776.452111,
+    "seen": 1795818971.7575698,
+    "ast_hash": "f1acb88ce8ff48ed66864f4a41a7c832",
     "semantic_hash": ""
   },
   "src/cache.ts": {
@@ -42,9 +42,9 @@
     "semantic_hash": "3750eed6e24c7cab55f4b9b15bd49c42"
   },
   "src/explain.ts": {
-    "mtime": 1795805704.0083227,
-    "seen": 1795805839.2191331,
-    "ast_hash": "4be7e2d335a244f1677f7c1fa21b3666",
+    "mtime": 1795818953.8810687,
+    "seen": 1795818971.7575698,
+    "ast_hash": "9dd56797a9a89ec4ffadaf11412b66f1",
     "semantic_hash": ""
   },
   "src/game.ts": {
