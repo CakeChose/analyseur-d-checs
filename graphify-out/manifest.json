@@ -102,9 +102,9 @@
     "semantic_hash": "968289f3564c54fb4cab9302b05757bb"
   },
   "src/profile.ts": {
-    "mtime": 1795799745.396286,
-    "seen": 1795799855.5818262,
-    "ast_hash": "8a0d143a2dd6de7e4924c8764b43cb64",
+    "mtime": 1795800648.8293133,
+    "seen": 1795800796.0976796,
+    "ast_hash": "35ebb7431aa762d1319f0d9bbe7bce1f",
     "semantic_hash": ""
   },
   "public/sw.js": {
@@ -114,9 +114,9 @@
     "semantic_hash": "b52f05589d78a673c9039dcf6ac1a6a7"
   },
   "src/openings-view.ts": {
-    "mtime": 1795799670.8818462,
-    "seen": 1795799855.5818262,
-    "ast_hash": "9da9fbd0977733d77a3c38ee2d30581c",
+    "mtime": 1795800688.0618975,
+    "seen": 1795800796.0976796,
+    "ast_hash": "4bd8e2925479d6e2b4d5629b81588835",
     "semantic_hash": ""
   },
   "src/problems.ts": {
