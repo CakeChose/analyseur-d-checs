@@ -50,7 +50,7 @@ export function playLine(fen: string, uci: string[], max: number): Move[] {
  * Bilan des prises sur une ligne, pour le camp `who` : pièces gagnées
  * moins pièces perdues (les échanges de même type s'annulent).
  */
-export function netCaptures(moves: Move[], who: Color): { won: PieceSymbol[]; lost: PieceSymbol[] } {
+export function netCaptures(moves: { color: Color; captured?: PieceSymbol }[], who: Color): { won: PieceSymbol[]; lost: PieceSymbol[] } {
   const won: PieceSymbol[] = [];
   const lost: PieceSymbol[] = [];
   for (const m of moves) {

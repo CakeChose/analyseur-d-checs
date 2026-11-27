@@ -72,21 +72,25 @@ export async function fetchChessComStats(user: string): Promise<{ speeds: Record
 /**
  * Les `max` dernières parties chess.com du joueur ; avec `speeds`, les `max` dernières de chacune
  * de ces cadences (moins s'il n'y en a pas assez dans tout l'historique).
+ * `known` : nombre total de parties par cadence (stats chess.com), pour s'arrêter dès qu'on les a
+ * toutes, au lieu de remonter tout l'historique pour une cadence peu jouée (6 parties « par jour »
+ * faisaient lire 41 mois, 15 Mo).
  */
-export async function fetchChessCom(user: string, max = MAX, speeds?: string[]): Promise<OnlineGame[]> {
+export async function fetchChessCom(user: string, max = MAX, speeds?: string[], known?: Record<string, number>): Promise<OnlineGame[]> {
   const base = `https://api.chess.com/pub/player/${encodeURIComponent(user.toLowerCase())}`;
   const res = await fetch(`${base}/games/archives`);
   if (res.status === 404) throw new Error('joueur introuvable sur chess.com');
   if (!res.ok) throw new Error(`chess.com a répondu ${res.status}`);
   const { archives } = (await res.json()) as { archives: string[] };
   const games: OnlineGame[] = [];
-  const left = new Map(speeds?.map((sp) => [sp, max]));
+  const left = new Map(speeds?.map((sp) => [sp, Math.min(max, known?.[sp] ?? max)]));
   const full = () => (speeds ? [...left.values()].every((n) => n <= 0) : games.length >= max);
-  // Les archives sont mensuelles : on remonte depuis le mois le plus récent.
-  for (const url of archives.slice().reverse()) {
-    if (full()) break;
-    const month = await fetch(url).then((r) => r.json());
-    for (const g of (month.games ?? []).slice().reverse()) {
+  // Les archives sont mensuelles : on remonte depuis le mois le plus récent, 4 mois à la fois.
+  const months = archives.slice().reverse();
+  for (let i = 0; i < months.length && !full(); i += 4) {
+    const batch = await Promise.all(months.slice(i, i + 4).map((url) => fetch(url).then((r) => r.json())));
+    for (const month of batch) for (const g of (month.games ?? []).slice().reverse()) {
+      if (full()) return games;
       if (!g.pgn || g.rules !== 'chess') continue;
       if (speeds) {
         if (!((left.get(g.time_class) ?? 0) > 0)) continue;
@@ -105,7 +109,6 @@ export async function fetchChessCom(user: string, max = MAX, speeds?: string[]):
         accuracies: g.accuracies,
         pgn: g.pgn,
       });
-      if (full()) return games;
     }
   }
   return games;

@@ -5,6 +5,7 @@
 import { Chess, type Color, type Move } from 'chess.js';
 import {
   analyseGame,
+  fastLine,
   puzzlePosition,
   reviewGame,
   type Classification,
@@ -112,7 +113,7 @@ function motif(move: Move): Motif | null {
 
 /** Une suite du moteur fait-elle gagner du matériel (ou mater) au camp `who` ? */
 function winsMaterial(fen: string, pv: string[], who: Color, before: Move[] = []): boolean {
-  return netCaptures([...before, ...playLine(fen, pv, 6)], who).won.length > 0;
+  return netCaptures([...before, ...fastLine(fen, pv.slice(0, 6))], who).won.length > 0;
 }
 
 /** Pourquoi ce coup est une erreur : une ou plusieurs étiquettes. */
@@ -434,10 +435,21 @@ export function profileStats(allGames: GameSummary[], minLoss = 0, last = 0): Pr
   };
 }
 
+/**
+ * Résumés déjà calculés pendant cette visite : le profil est rechargé à chaque onglet, et toutes les
+ * 5 parties pendant l'analyse en lot ; seules les fiches nouvelles ou réanalysées sont recalculées.
+ */
+const summaries = new Map<string, GameSummary | null>();
+
 /** Toutes les parties stockées où `username` joue, résumées. */
 export async function loadProfile(username: string): Promise<GameSummary[]> {
   const fiches = await cacheAll<Fiche>();
-  return fiches.flatMap((f) => (isFiche(f) ? (summarize(f, username) ?? []) : []));
+  return fiches.flatMap((f) => {
+    if (!isFiche(f)) return [];
+    const key = `${username.toLowerCase()}|${f.id}|${f.depth}|${f.positions.length}`;
+    if (!summaries.has(key)) summaries.set(key, summarize(f, username));
+    return summaries.get(key) ?? [];
+  });
 }
 
 // ---------------------------------------------------------------------------

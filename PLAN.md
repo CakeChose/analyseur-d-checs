@@ -364,6 +364,13 @@ On construit d'abord le **squelette** (10.1 à 10.4), puis les **pages d'apprent
   Carte « Toutes les cadences » (API stats chess.com, tout l'historique) : Elo actuel, meilleur Elo et sa date,
   nombre de parties, V / N / D, score ; meilleur classement en problèmes.
 - Liste gardée en cache ~1 h pour ne pas interroger chess.com à chaque visite.
+- Vitesse de chargement (27/11/2026) : chaque cadence est plafonnée au nombre de parties annoncé par les
+  stats chess.com, et les archives mensuelles sont lues 4 par 4 (avant : 41 mois lus un par un, 15 Mo, 8 s,
+  pour trouver 50 parties « par jour » qui n'existaient pas ; après : 0,4 s). Les résumés de parties sont
+  gardés en mémoire pendant la visite (plus recalculés à chaque onglet ni toutes les 5 parties du lot),
+  et calculés pendant l'attente de chess.com. Le rejeu des lignes du moteur pour les sacrifices et les
+  tactiques passe par un mini-plateau (`fastLine` dans `analysis.ts`) au lieu de chess.js : 93 → 11 ms
+  par partie, résultats identiques.
 - Téléphone : stats générales → cartes cliquables → liste des parties.
 
 ### 10.4 Vue d'une partie

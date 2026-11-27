@@ -1050,7 +1050,10 @@ async function loadGames(user: string, speeds: string[], force = false): Promise
     /* cache illisible : on recharge */
   }
   // 50 dernières parties de chaque cadence, pour que chaque onglet du profil ait ses statistiques.
-  const games = await fetchChessCom(user, 50, speeds);
+  const known = chessStats
+    ? Object.fromEntries(Object.entries(chessStats.speeds).map(([sp, st]) => [sp, st.win + st.loss + st.draw]))
+    : undefined;
+  const games = await fetchChessCom(user, 50, speeds, known);
   try {
     localStorage.setItem(key, JSON.stringify({ at: Date.now(), games }));
   } catch {
@@ -1110,6 +1113,8 @@ async function refreshProfile() {
   $('profile-name').textContent = user;
   await loadBook();
   if (!listGames.length) $('games-status').textContent = 'Chargement des parties…';
+  // Les analyses enregistrées se résument pendant qu'on attend chess.com.
+  const summariesReady = loadProfile(user);
   chessStats = await loadChessStats(user).catch(() => null);
   // Cadences jouées d'après chess.com : inutile de parcourir tout l'historique pour une cadence jamais jouée.
   const played = chessStats ? SPEED_ORDER.filter((sp) => chessStats!.speeds[sp]) : SPEED_ORDER;
@@ -1119,7 +1124,7 @@ async function refreshProfile() {
   } catch (e) {
     $('games-status').textContent = `Impossible de récupérer les parties : ${(e as Error).message}.`;
   }
-  const summaries = await loadProfile(user);
+  const summaries = await summariesReady;
   accById = new Map(summaries.map((s) => [s.id, s.accuracy]));
   renderGamesList();
   // Onglet « Général » (toutes cadences) puis une synthèse par cadence : on ne mélange pas bullet et rapide.
