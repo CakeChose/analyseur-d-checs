@@ -66,9 +66,9 @@
     "semantic_hash": ""
   },
   "src/main.ts": {
-    "mtime": 1795785220.116845,
-    "seen": 1795785235.6052377,
-    "ast_hash": "6cd5395754710d36c02d75333932be32",
+    "mtime": 1795785717.4917178,
+    "seen": 1795785725.617984,
+    "ast_hash": "4d89127ea22591ec50adca816eb2a4ad",
     "semantic_hash": ""
   },
   "src/openings.ts": {
@@ -102,9 +102,9 @@
     "semantic_hash": "968289f3564c54fb4cab9302b05757bb"
   },
   "src/profile.ts": {
-    "mtime": 1795785084.640237,
-    "seen": 1795785099.6304624,
-    "ast_hash": "00739cef27b723d1d9b165cbdaa79a98",
+    "mtime": 1795785387.5340302,
+    "seen": 1795785409.0058055,
+    "ast_hash": "e1d6309e256d6ed047aa841b0e2bad69",
     "semantic_hash": ""
   },
   "public/sw.js": {

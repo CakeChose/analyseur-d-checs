@@ -1,17 +1,17 @@
 # Graph Report - analyseur d'échecs  (2026-11-27)
 
 ## Corpus Check
-- 23 files · ~57,389 words
+- 23 files · ~57,464 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 4 file(s) not represented in the graph (top: (none) 2, .webmanifest 1, .css 1)
 
 ## Summary
-- 355 nodes · 934 edges · 12 communities (11 shown, 1 thin omitted)
+- 355 nodes · 933 edges · 12 communities (11 shown, 1 thin omitted)
 - Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 5 edges (avg confidence: 0.85)
 - Token cost: 167,135 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `9b395cdc`
+- Built from commit: `4b2fe268`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -34,7 +34,7 @@
 3. `show()` - 23 edges
 4. `explainMove()` - 21 edges
 5. `esc()` - 18 edges
-6. `renderProfile()` - 17 edges
+6. `renderProfile()` - 16 edges
 7. `runAnalysis()` - 14 edges
 8. `renderPuzzle()` - 13 edges
 9. `Engine` - 13 edges
@@ -76,7 +76,7 @@ Nodes (24): dependencies, chess.js@^1.4.0, @lichess-org/chessground@^10.5.0, sto
 
 ### Community 4 - "main.ts"
 Cohesion: 0.06
-Nodes (64): evaluatePosition(), formatScore(), chessComPlayerExists(), fetchChessComStats(), fetchLichess(), OnlineGame, SpeedStats, accById (+56 more)
+Nodes (59): evaluatePosition(), formatScore(), chessComPlayerExists(), fetchChessComStats(), fetchLichess(), OnlineGame, SpeedStats, accById (+51 more)
 
 ### Community 5 - "$"
 Cohesion: 0.15
@@ -99,8 +99,8 @@ Cohesion: 0.17
 Nodes (11): compilerOptions, isolatedModules, lib, module, moduleResolution, noEmit, skipLibCheck, strict (+3 more)
 
 ### Community 10 - "show"
-Cohesion: 0.17
-Nodes (23): applyAnalysis(), jumpKeyMoment(), legalDests(), moveSpan(), onUserMove(), puzzleFree(), puzzleMove(), puzzleTarget() (+15 more)
+Cohesion: 0.13
+Nodes (28): applyAnalysis(), isInside(), jumpKeyMoment(), legalDests(), moveNumber(), moveSpan(), onUserMove(), puzzleFree() (+20 more)
 
 ## Knowledge Gaps
 - **1 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
@@ -121,4 +121,4 @@ _Questions this graph is uniquely positioned to answer:_
 - **Should `Dépendances npm` be split into smaller, more focused modules?**
   _Cohesion score 0.07816091954022988 - nodes in this community are weakly interconnected._
 - **Should `main.ts` be split into smaller, more focused modules?**
-  _Cohesion score 0.05750658472344162 - nodes in this community are weakly interconnected._
+  _Cohesion score 0.061955965181771634 - nodes in this community are weakly interconnected._

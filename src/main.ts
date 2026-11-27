@@ -1107,8 +1107,8 @@ async function refreshProfile() {
   // Onglet « Général » (toutes cadences) puis une synthèse par cadence : on ne mélange pas bullet et rapide.
   const all = profileSpeed === 'all';
   renderProfile(
-    profileStats(all ? summaries : summaries.filter((g) => g.speed === profileSpeed), profileMinLoss),
-    all ? listGames : listGames.filter((g) => g.speed === profileSpeed),
+    profileStats(all ? summaries : summaries.filter((g) => g.speed === profileSpeed), profileMinLoss, profileLast),
+    (all ? listGames : listGames.filter((g) => g.speed === profileSpeed)).slice(0, profileLast || undefined),
     summaries,
   );
 }
@@ -1387,6 +1387,8 @@ function mountMiniBoards(root: HTMLElement) {
 
 /** Seuil de la synthèse : perte minimale (points de chances de gain) pour qu'une erreur compte. */
 let profileMinLoss = 0;
+/** Statistiques sur les N dernières parties (0 = toutes). */
+let profileLast = 0;
 const LOSS_FILTERS: [number, string][] = [
   [0, 'Toutes (imprécisions comprises)'],
   [THRESHOLDS.inaccuracy, `Erreurs et gaffes (≥ ${THRESHOLDS.inaccuracy} pts)`],
@@ -1431,11 +1433,12 @@ function renderProfile(s: ProfileStats, list: OnlineGame[], summaries: GameSumma
   const speedButtons = `<div class="speed-bar" role="tablist">${['all', ...SPEED_ORDER].map((sp) => {
     const elo = chessStats?.speeds[sp]?.rating;
     return `<button role="tab" aria-selected="${sp === profileSpeed}" data-speed="${sp}" class="${sp === profileSpeed ? 'active' : ''}">${SPEEDS[sp]}${elo ? ` <span class="tab-elo">${elo}</span>` : ''}</button>`;
-  }).join('')}</div>`;
+  }).join('')}<select id="profile-last" aria-label="Parties prises en compte">${[0, 100, 50]
+    .map((v) => `<option value="${v}" ${v === profileLast ? 'selected' : ''}>${v ? `${v} dernières` : 'Toutes les parties'}</option>`)
+    .join('')}</select></div>`;
 
   // Milieu : les statistiques à lire.
-  const rec = { win: 0, draw: 0, loss: 0 };
-  for (const g of list) rec[resultFor(g)]++;
+  const rec = s.record;
   const kpi = (label: string, value: string, sub = '') =>
     `<div class="kpi"><div class="muted">${label}</div><div class="kpi-v">${value}</div>${sub ? `<div class="muted kpi-s">${sub}</div>` : ''}</div>`;
   const byColor = (c: 'w' | 'b') => (s.games.some((g) => g.color === c) ? s.accuracy[c].toFixed(1) : '—');
@@ -1446,7 +1449,7 @@ function renderProfile(s: ProfileStats, list: OnlineGame[], summaries: GameSumma
   const all = profileSpeed === 'all';
   const kpis = `<div class="kpis">
       ${kpi('Précision', n ? s.accuracy.all.toFixed(1) : '—', n ? `Blancs ${byColor('w')} · Noirs ${byColor('b')}` : 'aucune partie analysée')}
-      ${kpi('Bilan récent', list.length ? pct((100 * (rec.win + rec.draw / 2)) / list.length) : '—', `${vnd(rec.win, rec.draw, rec.loss)} sur ${list.length} parties`)}
+      ${kpi('Bilan', n ? pct((100 * (rec.win + rec.draw / 2)) / n) : '—', n ? `${vnd(rec.win, rec.draw, rec.loss)} sur ${n} parties analysées` : 'aucune partie analysée')}
       ${kpi('Gaffes par partie', n ? (blunders / n).toFixed(1) : '—', `${n} partie${n > 1 ? 's' : ''} analysée${n > 1 ? 's' : ''} sur ${list.length}`)}
     </div>`;
   const accCard = `<section class="card"><h2>Précision par partie</h2>${
@@ -1524,8 +1527,9 @@ function renderProfile(s: ProfileStats, list: OnlineGame[], summaries: GameSumma
 
 $('view-profil').addEventListener('change', (e) => {
   const t = e.target as HTMLSelectElement;
-  if (t.id !== 'profile-minloss') return;
-  profileMinLoss = Number(t.value);
+  if (t.id === 'profile-last') profileLast = Number(t.value);
+  else if (t.id === 'profile-minloss') profileMinLoss = Number(t.value);
+  else return;
   refreshProfile();
 });
 $('view-profil').addEventListener('keydown', (e) => {

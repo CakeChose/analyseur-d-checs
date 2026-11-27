@@ -307,11 +307,15 @@ function groupBy<T>(xs: T[], key: (x: T) => string): Map<string, T[]> {
   return m;
 }
 
-/** `minLoss` : ne garder que les erreurs qui font perdre au moins autant de points de chances de gain. */
-export function profileStats(games: GameSummary[], minLoss = 0): ProfileStats {
+/**
+ * `minLoss` : ne garder que les erreurs qui font perdre au moins autant de points de chances de gain.
+ * `last` : statistiques sur les `last` dernières parties seulement (0 = toutes) ; ne change pas les erreurs.
+ */
+export function profileStats(allGames: GameSummary[], minLoss = 0, last = 0): ProfileStats {
   // Erreurs, causes et problèmes : les parties récentes, plus les anciennes jouées à un Elo proche de l'actuel
   // (par cadence) ; les autres erreurs ne reflètent plus le niveau.
-  const sorted = [...games].sort((a, b) => b.date.localeCompare(a.date));
+  const sorted = [...allGames].sort((a, b) => b.date.localeCompare(a.date));
+  const games = last ? sorted.slice(0, last) : allGames;
   const eloNow = new Map<string, number>();
   for (const g of sorted) if (g.elo && !eloNow.has(g.speed)) eloNow.set(g.speed, g.elo);
   const recent = sorted.filter((g, i) => i < RECENT || (g.elo > 0 && Math.abs(g.elo - (eloNow.get(g.speed) ?? -1e9)) <= ELO_RANGE));
