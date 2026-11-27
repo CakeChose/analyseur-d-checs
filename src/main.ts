@@ -259,7 +259,7 @@ async function analyseLive(node: TreeNode) {
   const ev = await evaluateNode(node, true);
   if (!ev || current !== node) return;
   if (needsReview && parent.eval) {
-    node.review = reviewMove(node.move!, parent.eval, ev, parent.review);
+    node.review = reviewMove(node.move!, parent.eval, ev, parent.review, parent.move);
     if (isBookNode(node)) node.review.classification = 'book';
     renderMoves();
     renderReview(node);

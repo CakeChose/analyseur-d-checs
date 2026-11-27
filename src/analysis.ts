@@ -6,14 +6,16 @@ import { openingName } from './openings';
 
 // ---------------------------------------------------------------------------
 // Réglages (seuils en points de probabilité de gain perdus par le joueur)
+// Calibrés sur 345 coups de 6 parties revues par chess.com (novembre 2026) :
+// même note sur 219 coups, contre 191 avec les anciens réglages (2 / 5 / 10 / 20, « Seul coup » à 10).
 // ---------------------------------------------------------------------------
 export const THRESHOLDS = {
-  excellent: 2,
-  good: 5,
+  excellent: 3.5,
+  good: 7,
   inaccuracy: 10,
   mistake: 20,
   /** Écart minimal entre le 1er et le 2e coup du moteur pour un « Seul coup ». */
-  great: 10,
+  great: 9,
   /** …et le 2e coup ne doit pas garder une position nettement gagnante (sinon ce n'est pas le « seul »). */
   greatAlternativeMax: 75,
   /** Matériel (en pions) qu'il faut sacrifier pour un « Brillant ». */
@@ -204,11 +206,17 @@ export function puzzlePosition(before: PositionEval, white: boolean): boolean {
   return onlyGoodMove(before, white) || (!!second && mates(best) && !mates(second));
 }
 
+/** Simple reprise de la pièce qui vient d'être prise : coup évident, jamais un « Seul coup » (comme chess.com). */
+function isRecapture(move: Move, previousMove: Move | undefined): boolean {
+  return !!previousMove?.captured && !!move.captured && move.to === previousMove.to;
+}
+
 export function reviewMove(
   move: Move,
   before: PositionEval,
   after: PositionEval,
   previous: MoveReview | undefined,
+  previousMove?: Move,
 ): MoveReview {
   const white = move.color === 'w';
   const pov = (w: number) => (white ? w : 100 - w);
@@ -232,14 +240,14 @@ export function reviewMove(
   if (loss < T.excellent) {
     if (isSacrifice(move, after) && winBefore < T.alreadyWinning && winAfter >= 50) {
       classification = 'brilliant';
-    } else if (isBest && onlyGoodMove(before, white)) {
+    } else if (isBest && onlyGoodMove(before, white) && !isRecapture(move, previousMove)) {
       classification = 'great';
     }
   }
 
-  // L'adversaire vient de se tromper et on ne profite pas de l'occasion
-  // (une vraie gaffe reste une gaffe).
-  if (previous && previous.loss >= T.missOpportunity && loss >= T.inaccuracy && loss < T.mistake) {
+  // L'adversaire vient de se tromper et on ne profite pas de l'occasion. Comme chess.com,
+  // même une grosse perte devient « Raté » (17 « Raté » sur 20 retrouvés, contre 7 avec une limite à 20).
+  if (previous && previous.loss >= T.missOpportunity && loss >= T.inaccuracy) {
     classification = 'miss';
   }
 
@@ -257,7 +265,7 @@ function markBook(game: Game, moves: MoveReview[], i: number) {
 export function reviewGame(game: Game, positions: PositionEval[], depth: number): GameAnalysis {
   const moves: MoveReview[] = [];
   game.moves.forEach((move, i) => {
-    moves.push(reviewMove(move, positions[i], positions[i + 1], moves[i - 1]));
+    moves.push(reviewMove(move, positions[i], positions[i + 1], moves[i - 1], game.moves[i - 1]));
     markBook(game, moves, i);
   });
   return { depth, positions, moves, accuracy: gameAccuracy(positions.map((p) => p.win)) };
@@ -288,7 +296,7 @@ export async function analyseGame(
       positions.push(evals[positions.length]!);
       const i = positions.length - 1;
       if (i > 0) {
-        moves.push(reviewMove(game.moves[i - 1], positions[i - 1], positions[i], moves[i - 2]));
+        moves.push(reviewMove(game.moves[i - 1], positions[i - 1], positions[i], moves[i - 2], game.moves[i - 2]));
         markBook(game, moves, i - 1);
       }
     }

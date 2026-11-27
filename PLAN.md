@@ -85,18 +85,37 @@ https://cakechose.github.io/analyseur-d-checs/**
 ### Classification des coups — fait
 - Livre (Book) : la position et toutes celles d'avant sont dans la base d'ouvertures Lichess (CC0).
 - Meilleur (Best) : coup n°1 du moteur.
-- Excellent : perte de win% < 2.
-- Bon (Good) : perte < 5.
+- Excellent : perte de win% < 3,5.
+- Bon (Good) : perte < 7.
 - Imprécision : perte < 10.
 - Erreur : perte < 20.
 - Gaffe (Blunder) : perte >= 20.
-- Très bon / Seul coup (Great) : meilleur coup ET écart win% avec le 2e coup MultiPV > 10
-  ET le 2e coup ne garde pas une position nettement gagnante (≤ 75 %).
-- Brillant : coup quasi parfait (perte < 2) qui sacrifie au moins 2 pions de matériel (mesuré
+- Très bon / Seul coup (Great) : meilleur coup ET écart win% avec le 2e coup MultiPV > 9
+  ET le 2e coup ne garde pas une position nettement gagnante (≤ 75 %), sauf si le coup reprend
+  simplement la pièce qui vient d'être prise (chess.com ne note jamais une reprise « Seul coup »).
+- Brillant : coup quasi parfait (perte < 3,5) qui sacrifie au moins 2 pions de matériel (mesuré
   après nos reprises sur la ligne du moteur), position pas déjà gagnée (< 97 %) et pas perdante après.
-- Raté (Miss) : l'adversaire venait de perdre ≥ 10 points et le coup joué en perd entre 10 et 20
-  (une vraie gaffe reste une gaffe).
-- Les seuils sont des constantes réglables (`THRESHOLDS`), à calibrer en comparant avec des analyses chess.com.
+- Raté (Miss) : l'adversaire venait de perdre ≥ 10 points et le coup joué en perd au moins 10,
+  même beaucoup plus (comme chess.com : une grosse perte juste après une faute adverse est un « Raté »).
+- Les seuils sont des constantes réglables (`THRESHOLDS`).
+
+### Calibrage sur chess.com — fait (27/11/2026)
+- Relevé de la note de chaque coup dans les bilans chess.com (6 parties revues de cake_chose, 345 coups
+  hors livre), comparé à `reviewMove` avec Stockfish lite profondeur 16 (MultiPV 3).
+- Même note sur 219 coups (63 %), contre 191 (55 %) avec les anciens réglages (2 / 5 / 10 / 20, Seul coup > 10,
+  Raté limité aux pertes < 20, reprises acceptées comme Seul coup).
+- Seul coup : 6 sur 7 retrouvés, 2 en trop (contre 13 en trop avant : presque toutes de simples reprises).
+- Raté : 17 sur 20 retrouvés (7 avant). Reste 2 gaffes notées Raté par l'appli (Bc4, Bxg5).
+- Ce qui reste différent, sans correction possible avec nos données :
+  - positions déjà décidées (≥ 85 % ou ≤ 15 %) : chess.com y note encore des erreurs, mais notre moteur
+    y voit une perte nulle (4 des 8 « Erreur » de chess.com) ; une règle en centipions ajouterait de fausses
+    erreurs, car notre moteur lite est bruité dans ces positions ;
+  - Meilleur / Excellent : les deux moteurs ne choisissent pas toujours le même meilleur coup ;
+  - Erreur / Gaffe : chess.com n'utilise pas une limite unique (gaffes à 14 points perdus, erreurs à 30).
+- La précision de l'API chess.com pour les anciennes parties est périmée (calcul plus ancien) : on compare
+  aux bilans ouverts sur le site, pas à l'API.
+- Une revue lancée par l'adversaire ne s'ouvre pas depuis notre compte (« authorization failed ») : on prend
+  seulement les parties dont la précision s'affiche et dont le bilan s'ouvre.
 
 ### Barre d'évaluation — fait
 - Affiche l'évaluation de la position courante (en probabilité de gain), animée ; « 1-0 / 0-1 » en cas de mat.
@@ -374,7 +393,7 @@ On construit d'abord le **squelette** (10.1 à 10.4), puis les **pages d'apprent
   Chaque problème a un état : jamais essayé (gris), raté (rouge), réussi 1 fois (vert pâle),
   2 fois de suite (vert), 3 fois de suite = validé (vert foncé), plus proposé. Seul le premier essai compte.
   Seules les positions à **un seul bon coup** deviennent des problèmes (règle du « Seul coup » :
-  le 2e coup du moteur perd > 10 points et ne garde pas ≥ 75 %, ou un mat que le 2e coup ne donne
+  le 2e coup du moteur perd > 9 points et ne garde pas ≥ 75 %, ou un mat que le 2e coup ne donne
   plus) : sinon plusieurs réponses étaient valables et on avait trop souvent faux.
 - Victoires / nulles / défaites en vert / gris / rouge partout où elles apparaissent.
 - D'autres pages pourront suivre le même modèle (finales, gestion du temps…).
@@ -389,7 +408,7 @@ On construit d'abord le **squelette** (10.1 à 10.4), puis les **pages d'apprent
   l'état partagé depuis `main.ts`) ; restent dans `main.ts` le profil et la vue d'une partie.
 
 ## Pistes pour la suite
-- Calibrer les seuils (surtout Brillant et Seul coup) sur des parties analysées par chess.com.
+- Brillant : trop peu d'exemples chez chess.com (3) pour le calibrer.
 - Choix de la pièce lors d'une promotion (aujourd'hui : dame automatique).
 - Coach : nouveaux motifs à partir des phrases qui sonnent faux sur de vraies parties
   (structure de pions, pièce piégée, roi exposé, enfilade, attaque à la découverte).
