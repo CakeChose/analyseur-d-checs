@@ -7,6 +7,7 @@ import {
   analyseGame,
   fastLine,
   puzzlePosition,
+  THRESHOLDS,
   reviewGame,
   type Classification,
   type GameAnalysis,
@@ -17,7 +18,7 @@ import { Engine } from './engine';
 import { discoveredAttack, forkTargets, mateFor, netCaptures, pinByMove, playLine, skewerByMove } from './explain';
 import { gameId, parsePgn, type Game } from './game';
 import { fetchChessCom } from './import';
-import { cacheAll, cacheGet, cachePut } from './cache';
+import { cacheAll, cacheGet, cacheKeys, cachePut, summaryAll, summaryKey, summaryPutMany } from './cache';
 import { openingName } from './openings';
 
 // ---------------------------------------------------------------------------
@@ -436,20 +437,32 @@ export function profileStats(allGames: GameSummary[], minLoss = 0, last = 0): Pr
 }
 
 /**
- * Résumés déjà calculés pendant cette visite : le profil est rechargé à chaque onglet, et toutes les
- * 5 parties pendant l'analyse en lot ; seules les fiches nouvelles ou réanalysées sont recalculées.
+ * Version des résumés enregistrés : à augmenter quand le contenu d'un résumé change (étiquettes,
+ * nouveaux champs…). Les seuils de notation sont ajoutés tout seuls : les changer recalcule tout.
  */
-const summaries = new Map<string, GameSummary | null>();
+const SUMMARY_VERSION = `1|${JSON.stringify(THRESHOLDS)}`;
 
-/** Toutes les parties stockées où `username` joue, résumées. */
+/**
+ * Toutes les parties stockées où `username` joue, résumées. Les résumés sont enregistrés (IndexedDB) :
+ * seules les parties nouvelles ou réanalysées sont recalculées (11 ms chacune ; 1 400 parties prenaient
+ * 15 s à chaque visite).
+ */
 export async function loadProfile(username: string): Promise<GameSummary[]> {
-  const fiches = await cacheAll<Fiche>();
-  return fiches.flatMap((f) => {
-    if (!isFiche(f)) return [];
-    const key = `${username.toLowerCase()}|${f.id}|${f.depth}|${f.positions.length}`;
-    if (!summaries.has(key)) summaries.set(key, summarize(f, username));
-    return summaries.get(key) ?? [];
-  });
+  const [ids, stored] = await Promise.all([cacheKeys(), summaryAll<{ v: string; s: GameSummary | null }>()]);
+  const missing = ids.filter((id) => stored.get(summaryKey(id, username))?.v !== SUMMARY_VERSION);
+  if (missing.length) {
+    // Beaucoup de résumés à refaire (première visite, nouvelle version) : une seule lecture de toutes les fiches.
+    const fiches = missing.length > 50 ? await cacheAll<Fiche>() : await Promise.all(missing.map((id) => cacheGet<Fiche>(id)));
+    const todo = new Set(missing);
+    const fresh: [string, { v: string; s: GameSummary | null }][] = [];
+    for (const f of fiches) {
+      if (!isFiche(f) || !todo.has(f.id)) continue;
+      fresh.push([summaryKey(f.id, username), { v: SUMMARY_VERSION, s: summarize(f, username) }]);
+    }
+    await summaryPutMany(fresh);
+    for (const [k, v] of fresh) stored.set(k, v);
+  }
+  return ids.flatMap((id) => stored.get(summaryKey(id, username))?.s ?? []);
 }
 
 // ---------------------------------------------------------------------------

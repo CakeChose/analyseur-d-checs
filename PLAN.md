@@ -371,6 +371,12 @@ On construit d'abord le **squelette** (10.1 à 10.4), puis les **pages d'apprent
   et calculés pendant l'attente de chess.com. Le rejeu des lignes du moteur pour les sacrifices et les
   tactiques passe par un mini-plateau (`fastLine` dans `analysis.ts`) au lieu de chess.js : 93 → 11 ms
   par partie, résultats identiques.
+- Résumés de parties enregistrés dans IndexedDB (magasin `summaries`, base v3) : avec 1 400 parties, le profil
+  passait 15 s à tout recalculer à chaque visite ; il relit maintenant les résumés en ~80 ms. Une fiche
+  réanalysée efface ses résumés (`cachePut`) ; changer les seuils ou augmenter `SUMMARY_VERSION`
+  (`profile.ts`, à faire quand le contenu d'un résumé change) recalcule tout une fois.
+- Effet sur l'analyse en lot : le profil n'est plus recalculé en entier toutes les 5 parties, la page ne
+  se fige plus et les moteurs ne l'attendent plus (le processeur passe de ~10 % à 50-90 %).
 - Téléphone : stats générales → cartes cliquables → liste des parties.
 
 ### 10.4 Vue d'une partie
