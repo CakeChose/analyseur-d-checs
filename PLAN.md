@@ -327,8 +327,7 @@ Objectif : un site agréable sur téléphone, installable comme une appli, sans 
 - Non fait : onglets Coups / Moteur / Bilan sous l'échiquier sur téléphone.
 
 ## Phase 10 : un site organisé autour du profil — squelette (10.1 à 10.4) et pages Problèmes / Ouvertures (10.5) faits
-Non fait en 10.5 : l'explorateur de « tes coups ici » (ce que tu joues dans chaque position) et le départ
-des entraînements à tes points de sortie de la théorie.
+Non fait en 10.5 : le départ des entraînements à tes points de sortie de la théorie.
 
 Objectif : un accueil qui sert une seule fois, puis tout tourne autour de la page profil.
 On construit d'abord le **squelette** (10.1 à 10.4), puis les **pages d'apprentissage** (10.5).
@@ -380,6 +379,12 @@ On construit d'abord le **squelette** (10.1 à 10.4), puis les **pages d'apprent
   score, précision, où tu sors de la théorie ; **explorateur** (coups de livre de la base d'ouvertures +
   3 meilleurs coups de Stockfish avec leurs lignes) ; **entraînement** (le site joue l'adversaire, tu dois
   trouver un coup de livre ou un des meilleurs coups).
+- **Tes coups ici** — fait : sous l'échiquier de la page Ouvertures (liste et ligne choisie), ce qui a été joué
+  dans la position affichée dans tes parties analysées : tes coups (nombre de parties, ton score, précision
+  moyenne du coup) et ceux de tes adversaires (parties, ton score). 📖 = coup de livre, « sortie » = le coup
+  quitte la théorie depuis une position de livre. Un clic joue le coup et l'explorateur suit. Positions
+  comparées sans les compteurs de coups (les transpositions se retrouvent). Seuls les 30 premiers demi-coups
+  de chaque partie sont gardés (`OPENING_PLIES`, champ `start` du résumé de partie dans `profile.ts`).
 - **Catalogue d'ouvertures** : une seule page Ouvertures, sans onglets. **En haut, « Mes ouvertures »** :
   les ouvertures les plus jouées dans tes parties analysées (avec les Blancs / les Noirs, parties, score,
   précision), mises en avant. **En dessous, « Toutes les ouvertures »** : les ~3 500 variantes nommées

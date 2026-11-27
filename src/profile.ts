@@ -196,7 +196,20 @@ export interface GameSummary {
   counts: Partial<Record<Classification, number>>;
   /** Coups brillants : position juste après le coup, pour les miniatures. */
   brilliants: { ply: number; san: string; fen: string; from: string; to: string }[];
+  /** Début de la partie (OPENING_PLIES demi-coups), pour l'explorateur « Tes coups ici » de la page Ouvertures. */
+  start: OpeningPly[];
 }
+
+/** Un demi-coup du début de partie : position d'avant (posKey), coup joué et sa précision. */
+export interface OpeningPly {
+  key: string;
+  san: string;
+  uci: string;
+  accuracy: number;
+}
+export const OPENING_PLIES = 30;
+/** Position sans les compteurs de coups : la même position atteinte par un autre ordre de coups a la même clé. */
+export const posKey = (fen: string) => fen.split(' ').slice(0, 4).join(' ');
 
 /**
  * Cadence d'après le champ TimeControl ("180+2", "1/86400"…), avec les seuils de chess.com
@@ -243,6 +256,12 @@ export function summarize(fiche: Fiche, username: string): GameSummary | null {
     elo: Number(color === 'w' ? h.WhiteElo : h.BlackElo) || 0,
     counts: {},
     brilliants: [],
+    start: game.moves.slice(0, OPENING_PLIES).map((m, i) => ({
+      key: posKey(m.before),
+      san: m.san,
+      uci: m.from + m.to + (m.promotion ?? ''),
+      accuracy: analysis.moves[i].accuracy,
+    })),
   };
   for (const fen of game.fens) summary.opening = openingName(fen) ?? summary.opening;
   if (!summary.opening) summary.opening = h.ECO ?? 'Inconnue';

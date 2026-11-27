@@ -5,7 +5,7 @@
 import type { Key } from '@lichess-org/chessground/types';
 import { Chess, type Square } from 'chess.js';
 import { loadCatalogue, openingName, type CatalogueLine } from './openings';
-import { loadProfile } from './profile';
+import { loadProfile, OPENING_PLIES, posKey, type GameSummary } from './profile';
 import { playMove } from './tree';
 import { $, esc, pct } from './ui';
 // shortcut: import circulaire avec main.ts (échiquier, partie affichée) ; sans danger tant que ce
@@ -17,6 +17,8 @@ let openingLine: CatalogueLine | null = null;
 let openingQuery = '';
 /** Ouvertures de tes parties analysées, les plus jouées d'abord. */
 let myOpenings: { name: string; color: 'w' | 'b'; games: number; score: number }[] = [];
+/** Tes parties analysées, pour l'explorateur « Tes coups ici ». */
+let myGames: GameSummary[] = [];
 /** Entraînement sur une ligne : le site joue l'adversaire, il faut retrouver les coups de la ligne. */
 export let training: { moves: string[]; color: 'w' | 'b'; index: number; errors: number } | null = null;
 
@@ -36,6 +38,7 @@ export async function openOpenings() {
   openingLine = null;
   load('', '', 'ouvertures');
   const games = profileName ? await loadProfile(profileName) : [];
+  myGames = games;
   const groups = new Map<string, { name: string; color: 'w' | 'b'; games: number; points: number }>();
   for (const g of games) {
     const k = `${g.opening}|${g.color}`;
@@ -83,10 +86,12 @@ async function renderOpenings() {
     : '<p class="muted">Analyse tes parties pour voir tes ouvertures ici.</p>';
   el.innerHTML = `<h2>Ouvertures</h2>
     <h3>Mes ouvertures</h3><div class="op-list">${mine}</div>
+    ${MY_MOVES}
     <h3>Toutes les ouvertures</h3>
     <input id="op-search" type="search" placeholder="Chercher : Najdorf, Caro-Kann, B90…" autocomplete="off" />
     <div class="op-list op-all"></div>`;
   $<HTMLInputElement>('op-search').value = openingQuery;
+  renderMyMoves();
   await renderAllOpenings();
 }
 
@@ -130,12 +135,74 @@ function renderOpeningLine() {
       <button data-train-color="b">avec les Noirs</button>
     </div>
     <p id="train-msg" class="train-msg"></p>
-    <div class="no-training"><h3>Suites de théorie</h3><div id="book-moves" class="op-list"></div></div>`;
+    <div class="no-training"><h3>Suites de théorie</h3><div id="book-moves" class="op-list"></div></div>
+    ${MY_MOVES}`;
   renderBookMoves();
+}
+
+const MY_MOVES = `<div class="no-training"><h3>Tes coups ici</h3><div id="my-moves" class="op-list"></div></div>`;
+
+/** Ce qui a été joué dans une position, dans tes parties : un coup par ligne, les plus fréquents d'abord. */
+export interface PlayedHere {
+  san: string;
+  uci: string;
+  games: number;
+  /** Tes points dans ces parties (en %). */
+  score: number;
+  /** Précision moyenne du coup (le tien ou celui de l'adversaire). */
+  accuracy: number;
+}
+
+/** Coups joués depuis `fen` dans `games`, séparés entre les tiens et ceux de tes adversaires. */
+export function playedHere(games: GameSummary[], fen: string): { mine: PlayedHere[]; theirs: PlayedHere[] } {
+  const key = posKey(fen);
+  const turn = fen.split(' ')[1];
+  const groups = { mine: new Map<string, PlayedHere & { points: number; accSum: number }>(), theirs: new Map<string, PlayedHere & { points: number; accSum: number }>() };
+  for (const g of games) {
+    const p = g.start.find((x) => x.key === key);
+    if (!p) continue;
+    const map = g.color === turn ? groups.mine : groups.theirs;
+    const e = map.get(p.uci) ?? { san: p.san, uci: p.uci, games: 0, score: 0, accuracy: 0, points: 0, accSum: 0 };
+    e.games++;
+    e.points += g.result === 'win' ? 1 : g.result === 'draw' ? 0.5 : 0;
+    e.accSum += p.accuracy;
+    map.set(p.uci, e);
+  }
+  const done = (m: Map<string, PlayedHere & { points: number; accSum: number }>) =>
+    [...m.values()]
+      .map(({ san, uci, games, points, accSum }) => ({ san, uci, games, score: (100 * points) / games, accuracy: accSum / games }))
+      .sort((a, b) => b.games - a.games);
+  return { mine: done(groups.mine), theirs: done(groups.theirs) };
+}
+
+/** L'explorateur « Tes coups ici » : ce que tu (et tes adversaires) avez joué dans la position affichée. */
+function renderMyMoves() {
+  const el = document.getElementById('my-moves');
+  if (!el || !current) return;
+  if (!myGames.length) {
+    el.innerHTML = '<p class="muted">Analyse tes parties (page Profil) pour voir ce que tu joues dans chaque position.</p>';
+    return;
+  }
+  const { mine, theirs } = playedHere(myGames, current.fen);
+  const inBook = current.ply === 0 || !!openingName(current.fen);
+  const row = (p: PlayedHere, accuracy: boolean) => {
+    const book = !!openingName(new Chess(current!.fen).move(p.san).after);
+    const tag = book ? '📖' : inBook ? '<span class="my-exit" title="Ce coup sort de la théorie">sortie</span>' : '';
+    return `<button class="op-row my-move" data-book="${p.uci}"><b>${esc(p.san)}</b><span class="op-name">${tag}</span>
+      <span class="muted">${p.games} partie${p.games > 1 ? 's' : ''}</span>
+      <span class="my-score ${p.score >= 50 ? 'good' : 'bad'}">${pct(p.score)}</span>
+      ${accuracy ? `<span class="muted" title="Précision moyenne de ce coup">${pct(p.accuracy)}</span>` : ''}</button>`;
+  };
+  const list = (items: PlayedHere[], accuracy: boolean) => items.map((p) => row(p, accuracy)).join('');
+  el.innerHTML =
+    (mine.length ? `<div class="my-head muted">Toi · parties · ton score · précision</div>${list(mine, true)}` : '') +
+    (theirs.length ? `<div class="my-head muted">Tes adversaires · parties · ton score</div>${list(theirs, false)}` : '') ||
+    `<p class="muted">Tu n'as jamais eu cette position dans tes parties analysées (${OPENING_PLIES} premiers demi-coups).</p>`;
 }
 
 /** Coups de théorie depuis la position affichée : les coups légaux qui mènent à une position connue. */
 export function renderBookMoves() {
+  renderMyMoves();
   const el = document.getElementById('book-moves');
   if (!el || !current) return;
   const items = new Chess(current.fen)

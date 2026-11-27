@@ -1466,6 +1466,33 @@ body.training .train-bar {
   cursor: pointer;
   font-size: 14px;
 }
+/* Explorateur « Tes coups ici » */
+.my-head {
+  font-size: 12px;
+  padding: 6px 4px 2px;
+}
+.my-move .muted {
+  font-size: 13px;
+}
+.my-score {
+  min-width: 42px;
+  text-align: right;
+  font-weight: 600;
+}
+.my-score.good {
+  color: var(--c-best);
+}
+.my-score.bad {
+  color: var(--c-blunder);
+}
+.my-exit {
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: var(--c-inaccuracy);
+  color: #222;
+}
+
 .op-vars .op-row {
   padding-left: 24px;
 }
